@@ -3,6 +3,10 @@ from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 import argparse, datetime, csv
+import ujson
+from pathlib import Path
+
+
 
 def map_trunc_to_full(couples, full_to_trunc_map):
     # Initialize an empty dictionary for the full couples
@@ -160,6 +164,15 @@ def save_params(parmas_file, args):
         writer.writerow(args_dict.values())
 
 
+def write_file(couples, directory, filename):
+    path = Path(directory)
+
+    path.mkdir(parents=True, exist_ok=True)
+    output_file = f"{directory}/{filename}.json"
+    with open(output_file, "w") as f:
+        ujson.dump(couples, f)
+
+
 def main():
 
     parser = argparse.ArgumentParser()
@@ -207,7 +220,7 @@ def main():
     
     couples_full = find_close_sequences(cdr3, max_dist=max_dist, max_mutations=max_mutations, right=right, left=left)
     
-    cpm.write_couples_file(couples_full, f"{out_folder}", f"{out_name}")
+    write_file(couples_full, f"{out_folder}", f"{out_name}")
     save_params(f"{out_folder}/{params_file}", args)
 
 
