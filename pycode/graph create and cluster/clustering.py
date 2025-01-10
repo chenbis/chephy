@@ -6,14 +6,17 @@ from sklearn.metrics import accuracy_score, recall_score, f1_score
 from node2vec import Node2Vec
 import numpy as np
 from collections import Counter
+from tqdm import tqdm
+
 
 def load_graph(file_path):
     """Load a graph from a CSV file."""
     df = pd.read_csv(file_path)
     G = nx.Graph()
-    for _, row in df.iterrows():
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="Loading Graph"):
         G.add_edge(row['source'], row['target'], weight=row['weight'], distance=row['distance'])
     return G
+
 
 def louvain_clustering(G):
     """Apply Louvain clustering to the graph."""
@@ -22,10 +25,18 @@ def louvain_clustering(G):
 
 def spectral_clustering(G, n_clusters):
     """Apply Spectral Clustering to the graph."""
+    # Convert graph to adjacency matrix
+    nodes = list(G.nodes())
     adj_matrix = nx.to_numpy_array(G, weight='weight')
+
+    # Optional: Add progress if the adjacency matrix is large
+    print("Running Spectral Clustering...")
     sc = SpectralClustering(n_clusters=n_clusters, affinity='precomputed')
     labels = sc.fit_predict(adj_matrix)
-    return {node: labels[i] for i, node in enumerate(G.nodes())}
+
+    # Map cluster labels back to nodes
+    return {node: labels[i] for i, node in enumerate(tqdm(nodes, desc="Mapping Spectral Clustering Labels"))}
+
 
 def kmeans_clustering(G, n_clusters):
     """Apply KMeans clustering to the graph using Node2Vec embeddings."""
@@ -53,6 +64,11 @@ def general_clustering(G, method, n_clusters=None):
 
 def evaluate_clustering(clustering_result, labels_df):
     """Evaluate clustering results using majority vote for cluster labels."""
+
+    # remove cdr3 without clusters
+    labels_df = labels_df[labels_df['cdr3'].isin(clustering_result.keys())]
+
+    # add a cluster column
     labels_df['cluster'] = labels_df['cdr3'].map(clustering_result)
 
     # Determine majority label for each cluster
@@ -73,9 +89,10 @@ def evaluate_clustering(clustering_result, labels_df):
 
     return accuracy, recall, f1
 
+
 def main():
-    graph_file_path = "/Users/camir/Documents/repos/sol_lab/cosmo_10k.csv"
-    labels_file_path = "/Users/camir/Documents/repos/sol_lab/files/vdjdb_cdr3.csv"
+    graph_file_path = "pycode/graph create and cluster/cosmo_graph1.csv"
+    labels_file_path = "/home/chen/repos/sol_lab/files/vdjdb_cdr3.csv"
 
     G = load_graph(graph_file_path)
 
@@ -83,8 +100,8 @@ def main():
     methods = ['spectral', 'kmeans']
     n_clusters = 5  # Default number of clusters for spectral and kmeans
 
-    for method in methods:
-        print(f"Running {method} clustering...")
+    for method in tqdm(methods, desc="Clustering Methods"):
+        print(f"\nRunning {method} clustering...")
         if method in ['spectral', 'kmeans']:
             clustering_result = general_clustering(G, method, n_clusters)
         else:
@@ -94,6 +111,7 @@ def main():
         labels_df = pd.read_csv(labels_file_path)
 
         # Evaluate clustering
+        print("evaluating results...")
         accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df)
 
         print(f"Results for {method} clustering:")
@@ -107,6 +125,8 @@ def main():
         output_file = f"clustering_results_{method}.csv"
         df_nodes.to_csv(output_file, index=False)
         print(f"Clustering results for {method} saved to {output_file}\n")
+
+
 
 if __name__ == "__main__":
     main()
