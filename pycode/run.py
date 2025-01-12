@@ -133,21 +133,38 @@ def find_sequences_within_distance(cdr3_list, max_dist, right=4, left=4):
     couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
     return couples_full
 
-def prepare_data(data, cdr3_header, epitope_header):
+# def prepare_data(data, cdr3_header, epitope_header):
     
-    ## remove cases where cdr3 is associated with multiple epitopes
+#     ## remove cases where cdr3 is associated with multiple epitopes
 
 
-    # Step 1: Group by 'cdr3' and 'antigen.epitope', and count occurrences
-    epitope_counts = data.groupby([cdr3_header, epitope_header]).size().reset_index(name='count')
+#     # Step 1: Group by 'cdr3' and 'antigen.epitope', and count occurrences
+#     epitope_counts = data.groupby([cdr3_header, epitope_header]).size().reset_index(name='count')
 
-    # Step 2: Get the most frequent epitope for each 'cdr3'
-    most_frequent_epitopes = epitope_counts.loc[epitope_counts.groupby(cdr3_header)['count'].idxmax()]
+#     # Step 2: Get the most frequent epitope for each 'cdr3'
+#     most_frequent_epitopes = epitope_counts.loc[epitope_counts.groupby(cdr3_header)['count'].idxmax()]
 
-    # Step 3: Merge with the original dataframe to retain only the most frequent epitopes
-    df_filtered = data.merge(most_frequent_epitopes[[cdr3_header, epitope_header]], on=[cdr3_header, epitope_header])
+#     # Step 3: Merge with the original dataframe to retain only the most frequent epitopes
+#     df_filtered = data.merge(most_frequent_epitopes[[cdr3_header, epitope_header]], on=[cdr3_header, epitope_header])
 
-    return df_filtered
+#     return df_filtered
+
+def prepare_data(data, cdr3_header):
+
+    # # remove nan values
+    # data_filtered = data.dropna(subset=[cdr3_header])
+
+    # remove cdr3 sequences that contain non-aa letters (this also removes nan)
+    amino_acid_pattern = r'^[ARNDCEQGHILKMFPSTWYV]+$'
+
+    data_filtered = data[data['CDR3b'].str.match(amino_acid_pattern, case=False, na=False)]
+
+    # move truncate to here
+
+    # merge with other prepare_data method after clustering is ready
+
+    return data_filtered
+
 
 def get_time():
     return datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -210,9 +227,10 @@ def main():
     # data = pd.read_csv("files/vdjdb_cdr3.csv")
     # data = data[(data["vdjdb.score"] >= 3)]
     
-    cdr3_header = "cdr3"
+    cdr3_header = "CDR3b"
 
     # data = prepare_data(data, cdr3_header, epitope_header)
+    data = prepare_data(data, cdr3_header)
 
 
     data.drop_duplicates(subset=cdr3_header)

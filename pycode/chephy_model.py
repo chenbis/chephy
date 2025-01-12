@@ -63,12 +63,14 @@ def find_che_phy_dist(sequences_set, max_mutations, max_dist):
     distances_df = pd.read_csv(distances_csv, index_col=0)
     distances_dict = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
     max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
+    
     worst_case_distances = {seq: sum(max_substitution_costs[aa] for aa in seq) for seq in sequences_set}
 
     # Use tqdm for progress tracking
     for seq in tqdm(sequences_set):
         results = find_sequences_within_distance(tree, seq, max_mutations)
-        results.remove((seq, 0))  # Remove self-match
+        if (seq, 0) in results: results.remove((seq, 0))
+        # results.remove((seq, 0))  # Remove self-match
         if results:
             neighbors[seq] = set(results)
 

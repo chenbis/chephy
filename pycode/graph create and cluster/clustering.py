@@ -7,21 +7,21 @@ from node2vec import Node2Vec
 import numpy as np
 from collections import Counter
 from tqdm import tqdm
+from itertools import product
+from joblib import Parallel, delayed
 
 
 def load_graph(file_path):
     """Load a graph from a CSV file."""
     df = pd.read_csv(file_path)
-    G = nx.Graph()
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="Loading Graph"):
-        G.add_edge(row['source'], row['target'], weight=row['weight'], distance=row['distance'])
+    G = nx.from_pandas_edgelist(df, source='source', target='target', edge_attr=['weight', 'distance'])
     return G
 
 
-def louvain_clustering(G):
-    """Apply Louvain clustering to the graph."""
-    partition = community_louvain.best_partition(G, weight='weight')
-    return partition
+# def louvain_clustering(G):
+#     """Apply Louvain clustering to the graph."""
+#     partition = community_louvain.best_partition(G, weight='weight')
+#     return partition
 
 def spectral_clustering(G, n_clusters):
     """Apply Spectral Clustering to the graph."""
@@ -40,7 +40,7 @@ def spectral_clustering(G, n_clusters):
 
 def kmeans_clustering(G, n_clusters):
     """Apply KMeans clustering to the graph using Node2Vec embeddings."""
-    node2vec = Node2Vec(G, dimensions=64, walk_length=30, num_walks=200, workers=4)
+    node2vec = Node2Vec(G, dimensions=64, walk_length=20, num_walks=100, workers=8)
     model = node2vec.fit(window=10, min_count=1, batch_words=4)
     embeddings = {node: model.wv[node] for node in G.nodes()}
     X = np.array([embeddings[node] for node in G.nodes()])
@@ -49,12 +49,15 @@ def kmeans_clustering(G, n_clusters):
 
 def general_clustering(G, method, n_clusters=None):
     """General clustering function to call specific methods."""
+
     if method == 'louvain':
         return louvain_clustering(G)
+    
     elif method == 'spectral':
         if n_clusters is None:
             raise ValueError("n_clusters must be specified for Spectral Clustering.")
         return spectral_clustering(G, n_clusters)
+    
     elif method == 'kmeans':
         if n_clusters is None:
             raise ValueError("n_clusters must be specified for KMeans Clustering.")
@@ -62,14 +65,14 @@ def general_clustering(G, method, n_clusters=None):
     else:
         raise ValueError(f"Unknown clustering method: {method}")
 
+
 def evaluate_clustering(clustering_result, labels_df):
     """Evaluate clustering results using majority vote for cluster labels."""
-
-    # remove cdr3 without clusters
     labels_df = labels_df[labels_df['cdr3'].isin(clustering_result.keys())]
+    labels_df = labels_df.copy()
 
-    # add a cluster column
-    labels_df['cluster'] = labels_df['cdr3'].map(clustering_result)
+    # Add a cluster column
+    labels_df.loc[:, 'cluster'] = labels_df.loc[:, 'cdr3'].map(clustering_result)
 
     # Determine majority label for each cluster
     cluster_labels = {}
@@ -78,7 +81,7 @@ def evaluate_clustering(clustering_result, labels_df):
         cluster_labels[cluster] = majority_label
 
     # Map predicted labels
-    labels_df['predicted_label'] = labels_df['cluster'].map(cluster_labels)
+    labels_df.loc[:, 'predicted_label'] = labels_df.loc[:, 'cluster'].map(cluster_labels)
 
     # Calculate metrics
     y_true = labels_df['antigen.epitope']
@@ -89,44 +92,59 @@ def evaluate_clustering(clustering_result, labels_df):
 
     return accuracy, recall, f1
 
+def grid_search_clustering_parallel(G, labels_df, method, param_combinations, param_names):
+    def evaluate_params(params):
+        param_dict = dict(zip(param_names, params))  # Create a parameter dictionary
+        try:
+            clustering_result = general_clustering(G, method, **param_dict)
+            accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df)
+            return accuracy, recall, f1, param_dict  # Return accuracy, recall, f1, and params
+        except Exception:
+            return 0, 0, 0, params  # Return zero values in case of an error
+
+    # Parallelize the grid search
+    results = Parallel(n_jobs=-1)(delayed(evaluate_params)(params) for params in param_combinations)
+    return results
+
 
 def main():
     graph_file_path = "pycode/graph create and cluster/cosmo_graph1.csv"
-    labels_file_path = "/home/chen/repos/sol_lab/files/vdjdb_cdr3.csv"
+    labels_file_path = "files/vdjdb_cdr3.csv"
 
     G = load_graph(graph_file_path)
+    labels_df = pd.read_csv(labels_file_path)
 
-    # Run all clustering methods
     methods = ['spectral', 'kmeans']
-    n_clusters = 5  # Default number of clusters for spectral and kmeans
+    param_grid = {
+        'spectral': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
+        'kmeans': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
+    }
 
-    for method in tqdm(methods, desc="Clustering Methods"):
-        print(f"\nRunning {method} clustering...")
-        if method in ['spectral', 'kmeans']:
-            clustering_result = general_clustering(G, method, n_clusters)
-        else:
-            clustering_result = general_clustering(G, method)
+    all_results = []  # List to store all results
 
-        # Load node labels
-        labels_df = pd.read_csv(labels_file_path)
+    for method in methods:
+        method_params = param_grid[method]
+        param_combinations = list(product(*method_params.values()))
+        param_names = list(method_params.keys())  # Extract parameter names
 
-        # Evaluate clustering
-        print("evaluating results...")
-        accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df)
+        results = grid_search_clustering_parallel(
+            G, labels_df, method, param_combinations, param_names
+        )
 
-        print(f"Results for {method} clustering:")
-        print(f"Accuracy: {accuracy:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1 Score: {f1:.4f}\n")
+        for result in results:
+            accuracy, recall, f1, params = result
+            all_results.append({
+                'method': method,
+                'params': str(params),
+                'accuracy': accuracy,
+                'recall': recall,
+                'f1_score': f1
+            })
 
-        # Save clustering results to a file
-        df_nodes = pd.DataFrame({'id': list(G.nodes())})
-        df_nodes['cluster'] = df_nodes['id'].map(clustering_result)
-        output_file = f"clustering_results_{method}.csv"
-        df_nodes.to_csv(output_file, index=False)
-        print(f"Clustering results for {method} saved to {output_file}\n")
-
-
+    # Convert the results to a DataFrame and save it as CSV
+    results_df = pd.DataFrame(all_results)
+    results_df.to_csv('clustering_results.csv', index=False)
+    print("Results saved to clustering_results.csv")
 
 if __name__ == "__main__":
     main()
