@@ -9,7 +9,7 @@ from collections import Counter
 from tqdm import tqdm
 from itertools import product
 from joblib import Parallel, delayed
-
+import json
 
 def load_graph(file_path):
     """Load a graph from a CSV file."""
@@ -89,6 +89,7 @@ def evaluate_clustering(clustering_result, labels_df):
     accuracy = accuracy_score(y_true, y_pred)
     recall = recall_score(y_true, y_pred, average='weighted')
     f1 = f1_score(y_true, y_pred, average='weighted')
+    print(accuracy, recall, f1)
 
     return accuracy, recall, f1
 
@@ -98,14 +99,28 @@ def grid_search_clustering_parallel(G, labels_df, method, param_combinations, pa
         try:
             clustering_result = general_clustering(G, method, **param_dict)
             accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df)
-            return accuracy, recall, f1, param_dict  # Return accuracy, recall, f1, and params
+            return accuracy, recall, f1, param_dict, clustering_result  # Return accuracy, recall, f1, and params
         except Exception:
-            return 0, 0, 0, params  # Return zero values in case of an error
+            return 0, 0, 0, params, {}  # Return zero values in case of an error
 
     # Parallelize the grid search
     results = Parallel(n_jobs=-1)(delayed(evaluate_params)(params) for params in param_combinations)
+    # results = [evaluate_params(params) for params in param_combinations] # for debugging
+
     return results
 
+class NumpyArrayEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, str):  # Ensure strings are returned as-is
+            return obj
+        else:
+            return super().default(obj)
 
 def main():
     graph_file_path = "pycode/graph create and cluster/cosmo_graph1.csv"
@@ -114,7 +129,7 @@ def main():
     G = load_graph(graph_file_path)
     labels_df = pd.read_csv(labels_file_path)
 
-    methods = ['spectral', 'kmeans']
+    methods = ['spectral', "kmeans"]
     param_grid = {
         'spectral': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
         'kmeans': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
@@ -132,18 +147,20 @@ def main():
         )
 
         for result in results:
-            accuracy, recall, f1, params = result
+            accuracy, recall, f1, params, clusters = result
+
             all_results.append({
                 'method': method,
                 'params': str(params),
                 'accuracy': accuracy,
                 'recall': recall,
-                'f1_score': f1
+                'f1_score': f1, 
+                'clusters': str(clusters)
             })
 
     # Convert the results to a DataFrame and save it as CSV
     results_df = pd.DataFrame(all_results)
-    results_df.to_csv('clustering_results.csv', index=False)
+    results_df.to_csv('clustering_stats.csv', index=False)
     print("Results saved to clustering_results.csv")
 
 if __name__ == "__main__":

@@ -6,8 +6,6 @@ import argparse, datetime, csv
 import ujson
 from pathlib import Path
 
-
-
 def map_trunc_to_full(couples, full_to_trunc_map):
     # Initialize an empty dictionary for the full couples
     couples_full = defaultdict(dict)
@@ -35,103 +33,39 @@ def map_trunc_to_full(couples, full_to_trunc_map):
 
     return dict(couples_full)
 
-
-
-
 def find_close_sequences(cdr3, max_dist=0.5, max_mutations=3, right=4, left=4):
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
     couples_trunc = cpm.find_che_phy_dist(sequences_set, max_mutations, max_dist)
     couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
     return couples_full
 
+# def hamming_distance(seq1, seq2):
+#     return sum(c1 != c2 for c1, c2 in zip(seq1, seq2))
 
-# def map_clusters(couples, max_neig):
-#     # Create a graph
-#     G = nx.Graph()
+# def find_sequences_within_distance(cdr3_list, max_dist, right=4, left=4):
+#     """Find all sequences that are within a Hamming distance of 1 for each sequence."""
 
-#     # Add edges to the graph based on the dictionary
-#     for node, neighbors in tqdm(couples.items()):
-#         count = 0
-#         for neighbor, weight in neighbors:
-#             if count < max_neig:
-#                 G.add_edge(node, neighbor, weight=weight)
-#                 count += 1
-
-
-#     # Find connected components
-#     clusters = list(nx.connected_components(G))
-
-#     # Create a dictionary to map sequences to cluster numbers
-#     cluster_dict = {}
-#     # for cluster_number, cluster in enumerate(clusters):
-#     #     for sequence in cluster:
-#     #         cluster_dict[sequence] = cluster_number    
-
-#     for cluster_number, cluster in enumerate(clusters):
-#         cluster_dict[cluster_number] = cluster
-   
-#     return cluster_dict
-
-
-
-def get_true_clusters(data, cdr3_header, eptiope_header):
-    
-    clusters_dict = {}
-
-    # Assign clusters based on common antigen
-    for cluster_id, (antigen, group) in enumerate(data.groupby(eptiope_header)):
-        for cdr3 in group[cdr3_header]:
-            clusters_dict[cdr3] = cluster_id
-
-    return clusters_dict
-
-def classify(clusters, data, cdr3_header):
-    cluster_classification = {}
-    for cluster, tcrs in tqdm(clusters.items()):
-        epitope_strengths = defaultdict(int)
-        for tcr in list(tcrs):
-            if tcr == "CASSEGWHSYEQYF":
-                print()
-            row = data[data[cdr3_header] == tcr]
-            epitope = row['antigen.epitope'].values[0]
-            strength = row['vdjdb.score'].values[0]
-            epitope_strengths[epitope] += strength
-
-        best_epitope = max(epitope_strengths, key=epitope_strengths.get)
-        cluster_classification[cluster] = best_epitope
-
-    return cluster_classification
-
-
-
-
-def hamming_distance(seq1, seq2):
-    return sum(c1 != c2 for c1, c2 in zip(seq1, seq2))
-
-def find_sequences_within_distance(cdr3_list, max_dist, right=4, left=4):
-    """Find all sequences that are within a Hamming distance of 1 for each sequence."""
-
-    sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3_list, right, left)
-    sequences_set = list(sequences_set)
+#     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3_list, right, left)
+#     sequences_set = list(sequences_set)
     
 
-    couples_trunc = defaultdict(list)
+#     couples_trunc = defaultdict(list)
     
-    for i, seq1 in enumerate(sequences_set):
-        # Initialize an empty list for each sequence
+#     for i, seq1 in enumerate(sequences_set):
+#         # Initialize an empty list for each sequence
         
-        for seq2 in sequences_set:
-            # Skip comparing the sequence with itself
-            if seq1 == seq2:
-                continue
+#         for seq2 in sequences_set:
+#             # Skip comparing the sequence with itself
+#             if seq1 == seq2:
+#                 continue
             
-            # If the Hamming distance is 1, add to the list
-            distance = hamming_distance(seq1, seq2)
-            if distance <= max_dist:
-                couples_trunc[seq1].append([seq2, distance/len(seq1)])
+#             # If the Hamming distance is 1, add to the list
+#             distance = hamming_distance(seq1, seq2)
+#             if distance <= max_dist:
+#                 couples_trunc[seq1].append([seq2, distance/len(seq1)])
     
-    couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
-    return couples_full
+#     couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
+#     return couples_full
 
 # def prepare_data(data, cdr3_header, epitope_header):
     
@@ -157,7 +91,7 @@ def prepare_data(data, cdr3_header):
     # remove cdr3 sequences that contain non-aa letters (this also removes nan)
     amino_acid_pattern = r'^[ARNDCEQGHILKMFPSTWYV]+$'
 
-    data_filtered = data[data['CDR3b'].str.match(amino_acid_pattern, case=False, na=False)]
+    data_filtered = data[data[cdr3_header].str.match(amino_acid_pattern, case=False, na=False)]
 
     # move truncate to here
 
@@ -198,7 +132,6 @@ def main():
     parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
     parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
-
 
     args = parser.parse_args()
 
@@ -241,6 +174,11 @@ def main():
     write_file(couples_full, f"{out_folder}", f"{out_name}")
     save_params(f"{out_folder}/{params_file}", args)
 
+
+    # add mst calculation (in cosmo_create.ipynb)
+    # save mst to cosmo file (edge data) (in cosmo_create.ipynb)
+    # add clustering calculation (in clustering.py)
+    # save clustering to cosmo file (node data) (in clustering.py)
 
 
 if __name__ == "__main__":
