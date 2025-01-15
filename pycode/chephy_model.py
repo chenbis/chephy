@@ -1,33 +1,82 @@
-import pandas as pd
+import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
-from pathlib import Path
-import ujson
 
-def create_tree(sequences):
-    tree = {}
-    for sequence in sequences:
-        current_dict = tree
-        for letter in sequence:
-            current_dict = current_dict.setdefault(letter, {})
-    return tree
-
-def traverse_tree(tree, sequence, max_diff, path="", current_diff=0, depth=0):
-    if current_diff > max_diff:
-        return []
+def compute_distance_matrices(sequences, substitution_matrix):
+    """
+    Compute actual, max distance, and Hamming distance matrices for a set of sequences.
+    """
+    n = len(sequences)
     
-    if not tree:
-        return [(path, current_diff)] if current_diff <= max_diff else []
+    # Initialize the matrices
+    actual_matrix = np.zeros((n, n))
+    dist_matrix = np.zeros((n, n), dtype=int)  # For Hamming distances
     
-    matching_sequences = []
-    for char, subtree in tree.items():
-        new_diff = current_diff + (1 if (depth < len(sequence) and char != sequence[depth]) else 0)
-        matching_sequences.extend(traverse_tree(subtree, sequence, max_diff, path + char, new_diff, depth + 1))
+    for i, seq1 in enumerate(tqdm(sequences, desc="Computing distance matrices")):
+        for j, seq2 in enumerate(sequences):
+            if i == j:
+                continue  # Skip self-comparisons
+            
+            # Compute actual distance
+            actual_matrix[i, j] = sum(
+                substitution_matrix[(aa1, aa2)] for aa1, aa2 in zip(seq1, seq2)
+            )
+            
+            # Compute Hamming distance
+            dist_matrix[i, j] = sum(aa1 != aa2 for aa1, aa2 in zip(seq1, seq2))
+    
+    return actual_matrix, dist_matrix
 
-    return matching_sequences
 
-def find_sequences_within_distance(tree, sequence, max_diff):
-    return traverse_tree(tree, sequence, max_diff)
+def normalize_and_filter(actual_matrix, max_distance, dist_matrix, max_dist):
+    """
+    Normalize the distance matrix, include Hamming distances, and filter results based on the threshold.
+    """
+    # Element-wise division to normalize distances
+    with np.errstate(divide='ignore', invalid='ignore'):  # Handle division by zero
+        normalized_matrix = np.divide(actual_matrix, max_distance)
+        normalized_matrix[np.isnan(normalized_matrix)] = 0  # Replace NaNs (self-comparisons)
+
+    # Apply the max_dist threshold
+    filtered_indices = np.where(normalized_matrix <= max_dist)
+    
+    # Collect pairs of indices, their normalized distances, and Hamming distances
+    results = [
+        (i, j, normalized_matrix[i, j], dist_matrix[i, j])
+        for i, j in zip(*filtered_indices)
+        if i != j  # Exclude self-comparisons
+    ]
+    return results
+
+
+def find_che_phy_dist(sequences_set, substitution_matrix, max_distance, max_dist=1):
+    """
+    Find sequence pairs within a normalized distance threshold, including Hamming distance.
+    """
+    # Convert sequences set to a list for indexing
+    sequences_list = list(sequences_set)
+    
+    # Compute distance matrices
+    actual_matrix, dist_matrix = compute_distance_matrices(
+        sequences_list, substitution_matrix
+    )
+    
+    # Normalize and filter results
+    filtered_results = normalize_and_filter(actual_matrix, max_distance, dist_matrix, max_dist)
+    
+    # Convert filtered results into the required format
+    neighbors = defaultdict(dict)
+    for i, j, normalized_distance, hamming_distance in filtered_results:
+        seq1 = sequences_list[i]
+        seq2 = sequences_list[j]
+        neighbors[seq1][seq2] = {
+            "weight": round(normalized_distance, 3),
+            "dist": hamming_distance
+        }
+    
+    return neighbors
+
+
 
 def truncate_sequences(sequences, right=4, left=4):
 
@@ -44,75 +93,3 @@ def truncate_sequences(sequences, right=4, left=4):
         full_to_trunc_map[trunc_seq].add(sequence)
 
     return sequences_set, full_to_trunc_map
-
-
-def make_symmetric_neighbors(neighbors):
-    combined = defaultdict(set, neighbors)
-    for key, values in neighbors.items():
-        for seq, value in values:
-            combined[seq].add((key, value))  # Add the inverted edge
-    return combined
-
-
-def find_che_phy_dist(sequences_set, max_mutations, max_dist):
-    neighbors = {}
-    tree = create_tree(sequences_set)  # Create the tree only once
-
-    # Precompute worst-case distances and substitution costs
-    distances_csv = "distance_matrix.csv"
-    distances_df = pd.read_csv(distances_csv, index_col=0)
-    distances_dict  = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
-    max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
-    
-    worst_case_distances = {seq: sum(max_substitution_costs[aa] for aa in seq) for seq in sequences_set}
-
-    # Use tqdm for progress tracking
-    for seq in tqdm(sequences_set):
-        results = find_sequences_within_distance(tree, seq, max_mutations)
-        if (seq, 0) in results: results.remove((seq, 0))
-        # results.remove((seq, 0))  # Remove self-match
-        if results:
-            neighbors[seq] = set(results)
-
-    neighbors = make_symmetric_neighbors(neighbors)  # Symmetrize neighbors
-
-    # Process neighbors
-    couples = defaultdict(dict)  # Changed from list to dict
-    for seq in tqdm(neighbors):
-        seq_neighbors = neighbors[seq]
-        worst_case_distance = worst_case_distances[seq]
-
-        for neighbor_seq, diff in seq_neighbors:
-            # Calculate the actual normalized distance
-            actual_distance = sum(distances_dict[(aa1, aa2)] for aa1, aa2 in zip(seq, neighbor_seq))
-            normalized_distance = actual_distance / worst_case_distance if worst_case_distance > 0 else 0
-
-            if normalized_distance <= max_dist:
-                # Store as a dictionary for networkx compatibility
-                couples[seq][neighbor_seq] = {
-                    "weight": round(normalized_distance, 3),
-                    "dist": diff
-                }
-
-    # Sort and return (sorting is not strictly necessary for dicts)
-    return couples
-
-
-
-def write_couples_file(couples, directory, filename):
-    path = Path(directory)
-
-    path.mkdir(parents=True, exist_ok=True)
-    output_file = f"{directory}/{filename}.json"
-    with open(output_file, "w") as f:
-        ujson.dump(couples, f)
-
-
-
-def get_worst_case_distance(seq, substitution_matrix):
-    max_distance = 0
-    for aa in seq:
-        # For each amino acid, find the maximum possible substitution cost
-        max_substitution_cost = substitution_matrix[aa].max()
-        max_distance += max_substitution_cost
-    return max_distance

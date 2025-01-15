@@ -1,10 +1,12 @@
-import chephy_model_new as cpm
+import pycode.chephy_model as cpm
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
 import argparse, datetime, csv
 import ujson
 from pathlib import Path
+from numpy import integer, floating, ndarray
+import networkx as nx
 
 def map_trunc_to_full(couples, full_to_trunc_map):
     # Initialize an empty dictionary for the full couples
@@ -119,17 +121,48 @@ def save_params(parmas_file, args):
 
 
 def write_file(couples, directory, filename):
+
+    # Convert NumPy types to native Python types
+    def convert_numpy_types(obj):
+        if isinstance(obj, (integer, floating)):
+            return obj.item()
+        elif isinstance(obj, ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(v) for v in obj]
+        return obj
+    
     path = Path(directory)
 
     path.mkdir(parents=True, exist_ok=True)
     output_file = f"{directory}/{filename}.json"
-    with open(output_file, "w") as f:
-        ujson.dump(couples, f)
+    processed_data = convert_numpy_types(couples)
 
-def calculate_max_dist(distance_matrix, seq_len = 8):
+    with open(output_file, "w") as f:
+        ujson.dump(processed_data, f)
+
+def calculate_greatest_dist(distance_matrix, seq_len = 8):
     max_distance = distance_matrix.max().max()
     greatest_distance = max_distance * seq_len
     return greatest_distance
+
+# Function to save graph to CSV
+def graph_to_csv(G, output_file):
+    with open(output_file, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['source', 'target', 'weight', "distance"])
+        
+        for u, v, data in G.edges(data=True):
+            writer.writerow([u, v, data.get('weight', 1), data.get('dist', 1)])
+
+def create_mst(couples, output_folder):
+    G = nx.from_dict_of_dicts(couples)
+    mst = nx.minimum_spanning_tree(G, weight='weight')
+    graph_to_csv(mst, output_folder)
+    return mst
+
 
 
 def main():
@@ -156,7 +189,7 @@ def main():
 
     distances_csv = "distance_matrix.csv"
     distances_df = pd.read_csv(distances_csv, index_col=0)
-    max_distance = calculate_max_dist(distances_df)
+    max_distance = calculate_greatest_dist(distances_df)
     print(max_distance)
     substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
     # max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
@@ -170,14 +203,16 @@ def main():
     cdr3 = list(data[cdr3_header])
     
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
-    neighbors = cpm.find_che_phy_dist(sequences_set, substitution_matrix=substitution_matrix, max_substitution_costs=max_substitution_costs)
+    neighbors = cpm.find_che_phy_dist(sequences_set, substitution_matrix, max_distance)
     couples_full = map_trunc_to_full(neighbors, full_to_trunc_map)  
 
 
     write_file(couples_full, f"{out_folder}", f"{out_name}")
     save_params(f"{out_folder}/{params_file}", args)
+    mst = create_mst(couples_full, f"{out_folder}/mst.csv")
 
 
+    # think of a general method to write files
     # add mst calculation (in cosmo_create.ipynb)
     # save mst to cosmo file (edge data) (in cosmo_create.ipynb)
     # add clustering calculation (in clustering.py)
