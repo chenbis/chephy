@@ -89,7 +89,6 @@ def evaluate_clustering(clustering_result, labels_df):
     accuracy = accuracy_score(y_true, y_pred)
     recall = recall_score(y_true, y_pred, average='weighted')
     f1 = f1_score(y_true, y_pred, average='weighted')
-    print(accuracy, recall, f1)
 
     return accuracy, recall, f1
 

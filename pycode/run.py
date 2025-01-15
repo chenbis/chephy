@@ -1,4 +1,4 @@
-import pycode.chephy_model as cpm
+import chephy_model as cpm
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
@@ -7,6 +7,9 @@ import ujson
 from pathlib import Path
 from numpy import integer, floating, ndarray
 import networkx as nx
+import clustering as clustering
+from itertools import product
+
 
 def map_trunc_to_full(couples, full_to_trunc_map):
     # Initialize an empty dictionary for the full couples
@@ -163,7 +166,42 @@ def create_mst(couples, output_folder):
     graph_to_csv(mst, output_folder)
     return mst
 
+def cluster(mst, output_folder, labels_path):
 
+    labels_df = pd.read_csv(labels_path)
+
+    methods = ['spectral', "kmeans"]
+    param_grid = {
+        'spectral': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
+        'kmeans': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
+    }
+
+    all_results = []  # List to store all results
+
+    for method in methods:
+        method_params = param_grid[method]
+        param_combinations = list(product(*method_params.values()))
+        param_names = list(method_params.keys())  # Extract parameter names
+
+        results = clustering.grid_search_clustering_parallel(
+            mst, labels_df, method, param_combinations, param_names
+        )
+
+        for result in results:
+            accuracy, recall, f1, params, clusters = result
+
+            all_results.append({
+                'method': method,
+                'params': str(params),
+                'accuracy': accuracy,
+                'recall': recall,
+                'f1_score': f1, 
+                'clusters': str(clusters)
+            })
+
+    # Convert the results to a DataFrame and save it as CSV
+    results_df = pd.DataFrame(all_results)
+    results_df.to_csv(f'{output_folder}/clustering_stats.csv', index=False)
 
 def main():
 
@@ -210,7 +248,7 @@ def main():
     write_file(couples_full, f"{out_folder}", f"{out_name}")
     save_params(f"{out_folder}/{params_file}", args)
     mst = create_mst(couples_full, f"{out_folder}/mst.csv")
-
+    cluster(mst, out_folder, labels_path="files/vdjdb_score3.csv")
 
     # think of a general method to write files
     # add mst calculation (in cosmo_create.ipynb)
