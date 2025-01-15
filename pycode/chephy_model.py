@@ -61,7 +61,7 @@ def find_che_phy_dist(sequences_set, max_mutations, max_dist):
     # Precompute worst-case distances and substitution costs
     distances_csv = "distance_matrix.csv"
     distances_df = pd.read_csv(distances_csv, index_col=0)
-    distances_dict = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
+    distances_dict  = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
     max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
     
     worst_case_distances = {seq: sum(max_substitution_costs[aa] for aa in seq) for seq in sequences_set}

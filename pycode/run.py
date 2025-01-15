@@ -1,4 +1,4 @@
-import chephy_model as cpm
+import chephy_model_new as cpm
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
@@ -97,6 +97,9 @@ def prepare_data(data, cdr3_header):
 
     # merge with other prepare_data method after clustering is ready
 
+    # drop duplicates
+    data.drop_duplicates(subset=cdr3_header)
+
     return data_filtered
 
 
@@ -123,11 +126,16 @@ def write_file(couples, directory, filename):
     with open(output_file, "w") as f:
         ujson.dump(couples, f)
 
+def calculate_max_dist(distance_matrix, seq_len = 8):
+    max_distance = distance_matrix.max().max()
+    greatest_distance = max_distance * seq_len
+    return greatest_distance
+
 
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", default="files/vdjdb_cdr3.csv", help="Input csv for the model to train on, must be a csv file")
+    parser.add_argument("-i", "--input", default="files/vdjdb_score3.csv", help="Input csv for the model to train on, must be a csv file")
     parser.add_argument("-m", "--mutations", default=8, type=int, help="Maximum number of mutations, default is 8")
     parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
@@ -144,33 +152,28 @@ def main():
     left = args.left
     input_file = args.input
     max_dist=1
+
+
+    distances_csv = "distance_matrix.csv"
+    distances_df = pd.read_csv(distances_csv, index_col=0)
+    max_distance = calculate_max_dist(distances_df)
+    print(max_distance)
+    substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
+    # max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
     
+ 
     data = pd.read_csv(input_file)
-
-    # # 1000 sequences
-    # data = pd.read_csv('files/forchen_F_26L.csv')
-    # cdr3_header = "cdr3_amino_acid"
-
-    # # # 10000 sequences
-    # data = pd.read_csv("files/cdrs_list.csv")
-    # cdr3_header = "Sequences"
-
-
-    # vdjdb beta chain
-    # data = pd.read_csv("files/vdjdb_cdr3.csv")
-    # data = data[(data["vdjdb.score"] >= 3)]
-    
-    cdr3_header = "CDR3b"
+    cdr3_header = "cdr3"
 
     # data = prepare_data(data, cdr3_header, epitope_header)
-    data = prepare_data(data, cdr3_header)
-
-
-    data.drop_duplicates(subset=cdr3_header)
+    data = prepare_data(data, cdr3_header)    
     cdr3 = list(data[cdr3_header])
     
-    couples_full = find_close_sequences(cdr3, max_dist=max_dist, max_mutations=max_mutations, right=right, left=left)
-    
+    sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
+    neighbors = cpm.find_che_phy_dist(sequences_set, substitution_matrix=substitution_matrix, max_substitution_costs=max_substitution_costs)
+    couples_full = map_trunc_to_full(neighbors, full_to_trunc_map)  
+
+
     write_file(couples_full, f"{out_folder}", f"{out_name}")
     save_params(f"{out_folder}/{params_file}", args)
 

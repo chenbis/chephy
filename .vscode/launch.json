@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["-i", "files/vdjdb_trait_onlyB.csv"],
+            "args": ["-i", "files/vdjdb_score3.csv"],
             "subProcess": true
         }
     ]
