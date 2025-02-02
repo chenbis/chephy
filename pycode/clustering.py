@@ -66,7 +66,7 @@ def general_clustering(G, method, n_clusters=None):
         raise ValueError(f"Unknown clustering method: {method}")
 
 
-def evaluate_clustering(clustering_result, labels_df):
+def evaluate_clustering(clustering_result, labels_df, labels_header):
     """Evaluate clustering results using majority vote for cluster labels."""
     labels_df = labels_df[labels_df['cdr3'].isin(clustering_result.keys())]
     labels_df = labels_df.copy()
@@ -77,7 +77,7 @@ def evaluate_clustering(clustering_result, labels_df):
     # Determine majority label for each cluster
     cluster_labels = {}
     for cluster, group in labels_df.groupby('cluster'):
-        majority_label = Counter(group['antigen.epitope']).most_common(1)[0][0]
+        majority_label = Counter(group[labels_header]).most_common(1)[0][0]
         cluster_labels[cluster] = majority_label
 
     # Map predicted labels
@@ -92,12 +92,12 @@ def evaluate_clustering(clustering_result, labels_df):
 
     return accuracy, recall, f1
 
-def grid_search_clustering_parallel(G, labels_df, method, param_combinations, param_names):
+def grid_search_clustering_parallel(G, labels_df, labels_header, method, param_combinations, param_names):
     def evaluate_params(params):
         param_dict = dict(zip(param_names, params))  # Create a parameter dictionary
         try:
             clustering_result = general_clustering(G, method, **param_dict)
-            accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df)
+            accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df, labels_header)
             return accuracy, recall, f1, param_dict, clustering_result  # Return accuracy, recall, f1, and params
         except Exception:
             return 0, 0, 0, params, {}  # Return zero values in case of an error

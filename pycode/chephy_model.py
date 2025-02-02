@@ -28,13 +28,13 @@ def compute_distance_matrices(sequences, substitution_matrix):
     return actual_matrix, dist_matrix
 
 
-def normalize_and_filter(actual_matrix, max_distance, dist_matrix, max_dist):
+def normalize_and_filter(actual_matrix, greatest_distance, dist_matrix, max_dist):
     """
     Normalize the distance matrix, include Hamming distances, and filter results based on the threshold.
     """
     # Element-wise division to normalize distances
     with np.errstate(divide='ignore', invalid='ignore'):  # Handle division by zero
-        normalized_matrix = np.divide(actual_matrix, max_distance)
+        normalized_matrix = np.divide(actual_matrix, greatest_distance)
         normalized_matrix[np.isnan(normalized_matrix)] = 0  # Replace NaNs (self-comparisons)
 
     # Apply the max_dist threshold
@@ -49,7 +49,7 @@ def normalize_and_filter(actual_matrix, max_distance, dist_matrix, max_dist):
     return results
 
 
-def find_che_phy_dist(sequences_set, substitution_matrix, max_distance, max_dist=1):
+def find_che_phy_dist(sequences_set, substitution_matrix, greatest_distance, max_dist=1):
     """
     Find sequence pairs within a normalized distance threshold, including Hamming distance.
     """
@@ -62,7 +62,7 @@ def find_che_phy_dist(sequences_set, substitution_matrix, max_distance, max_dist
     )
     
     # Normalize and filter results
-    filtered_results = normalize_and_filter(actual_matrix, max_distance, dist_matrix, max_dist)
+    filtered_results = normalize_and_filter(actual_matrix, greatest_distance, dist_matrix, max_dist)
     
     # Convert filtered results into the required format
     neighbors = defaultdict(dict)

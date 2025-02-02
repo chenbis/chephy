@@ -9,7 +9,10 @@ from numpy import integer, floating, ndarray
 import networkx as nx
 import clustering as clustering
 from itertools import product
-
+from matplotlib.colors import to_hex
+import ast
+import matplotlib.pyplot as plt
+import os
 
 def map_trunc_to_full(couples, full_to_trunc_map):
     # Initialize an empty dictionary for the full couples
@@ -44,34 +47,6 @@ def find_close_sequences(cdr3, max_dist=0.5, max_mutations=3, right=4, left=4):
     couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
     return couples_full
 
-# def hamming_distance(seq1, seq2):
-#     return sum(c1 != c2 for c1, c2 in zip(seq1, seq2))
-
-# def find_sequences_within_distance(cdr3_list, max_dist, right=4, left=4):
-#     """Find all sequences that are within a Hamming distance of 1 for each sequence."""
-
-#     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3_list, right, left)
-#     sequences_set = list(sequences_set)
-    
-
-#     couples_trunc = defaultdict(list)
-    
-#     for i, seq1 in enumerate(sequences_set):
-#         # Initialize an empty list for each sequence
-        
-#         for seq2 in sequences_set:
-#             # Skip comparing the sequence with itself
-#             if seq1 == seq2:
-#                 continue
-            
-#             # If the Hamming distance is 1, add to the list
-#             distance = hamming_distance(seq1, seq2)
-#             if distance <= max_dist:
-#                 couples_trunc[seq1].append([seq2, distance/len(seq1)])
-    
-#     couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
-#     return couples_full
-
 # def prepare_data(data, cdr3_header, epitope_header):
     
 #     ## remove cases where cdr3 is associated with multiple epitopes
@@ -88,24 +63,23 @@ def find_close_sequences(cdr3, max_dist=0.5, max_mutations=3, right=4, left=4):
 
 #     return df_filtered
 
-def prepare_data(data, cdr3_header):
+def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 
-    # # remove nan values
-    # data_filtered = data.dropna(subset=[cdr3_header])
+    # understand tcrscapes data preparation
+
 
     # remove cdr3 sequences that contain non-aa letters (this also removes nan)
     amino_acid_pattern = r'^[ARNDCEQGHILKMFPSTWYV]+$'
 
     data_filtered = data[data[cdr3_header].str.match(amino_acid_pattern, case=False, na=False)]
 
+    # drop duplicates
+    data_filtered = data_filtered.drop_duplicates(subset=cdr3_header)
+
     # move truncate to here
 
-    # merge with other prepare_data method after clustering is ready
-
-    # drop duplicates
-    data.drop_duplicates(subset=cdr3_header)
-
     return data_filtered
+
 
 
 def get_time():
@@ -166,9 +140,7 @@ def create_mst(couples, output_folder):
     graph_to_csv(mst, output_folder)
     return mst
 
-def cluster(mst, output_folder, labels_path):
-
-    labels_df = pd.read_csv(labels_path)
+def cluster(mst, output_folder, data, labels_header):
 
     methods = ['spectral', "kmeans"]
     param_grid = {
@@ -184,7 +156,7 @@ def cluster(mst, output_folder, labels_path):
         param_names = list(method_params.keys())  # Extract parameter names
 
         results = clustering.grid_search_clustering_parallel(
-            mst, labels_df, method, param_combinations, param_names
+            mst, data, labels_header, method, param_combinations, param_names
         )
 
         for result in results:
@@ -202,20 +174,68 @@ def cluster(mst, output_folder, labels_path):
     # Convert the results to a DataFrame and save it as CSV
     results_df = pd.DataFrame(all_results)
     results_df.to_csv(f'{output_folder}/clustering_stats.csv', index=False)
+    return results_df
+
+
+def save_best_cluster(df_cluster_stats, out_folder):
+
+
+    # Find the row with the highest accuracy
+    highest_accuracy_row = df_cluster_stats.loc[df_cluster_stats['accuracy'].idxmax()]
+
+    # Parse the JSON in the 'clusters' column
+    clusters = ast.literal_eval(highest_accuracy_row["clusters"])
+    method = highest_accuracy_row["method"]
+
+    # Create a DataFrame from the JSON
+    clusters_df = pd.DataFrame(list(clusters.items()), columns=['id', method])
+
+    # Generate unique colors for each cluster
+    num_clusters = len(clusters_df[method].unique())
+    colors = plt.cm.tab20.colors  # Use a colormap with enough distinct colors
+    hex_colors = [to_hex(c) for c in colors]
+    color_mapping = {cluster: hex_colors[i % len(hex_colors)] for i, cluster in enumerate(clusters_df[method].unique())}
+
+    # Add the color column
+    clusters_df['color'] = clusters_df[method].map(color_mapping)
+
+    # Save the resulting DataFrame to a new CSV
+    clusters_df.to_csv(f'{out_folder}/clusters_output.csv', index=False)
+
+def load_dataframe(file_path: str) -> pd.DataFrame:
+    """
+    Reads a CSV or TSV file and loads it into a Pandas DataFrame.
+    Raises an error if the file is not a CSV or TSV.
+    
+    :param file_path: Path to the file.
+    :return: Pandas DataFrame containing the file data.
+    """
+    # Check file extension
+    _, file_extension = os.path.splitext(file_path)
+    
+    if file_extension.lower() == ".csv":
+        return pd.read_csv(file_path)
+    elif file_extension.lower() == ".tsv":
+        return pd.read_csv(file_path, sep="\t")
+    else:
+        raise ValueError("Unsupported file format. Please provide a CSV or TSV file.")    
 
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", default="files/vdjdb_score3.csv", help="Input csv for the model to train on, must be a csv file")
-    parser.add_argument("-m", "--mutations", default=8, type=int, help="Maximum number of mutations, default is 8")
+    parser.add_argument("-i", "--input", default="files/vdjdb_cdr3.csv", help="Input csv for the model to train on, must be a csv file")
+    # parser.add_argument("-m", "--mutations", default=8, type=int, help="Maximum number of mutations, default is 8")
     parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
     parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
+    parser.add_argument("-ch", "--cdr_header",default="CDR3b", help="crd3 header in the input file. default id CDR3b")
+    parser.add_argument("-eh", "--epitope_header",default="Epitope", help="Epitope header in the input file. default id Epitope")
+
 
     args = parser.parse_args()
 
 
-    max_mutations = args.mutations
+    # max_mutations = args.mutations
     out_folder = f"output/{args.out_folder}"
     out_name = "neighbors"
     params_file = "params.csv"
@@ -223,38 +243,33 @@ def main():
     left = args.left
     input_file = args.input
     max_dist=1
+    label_header = args.epitope_header
+    cdr3_header = args.cdr_header
 
 
     distances_csv = "distance_matrix.csv"
     distances_df = pd.read_csv(distances_csv, index_col=0)
-    max_distance = calculate_greatest_dist(distances_df)
-    print(max_distance)
+    greatest_distance = calculate_greatest_dist(distances_df)
     substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
     # max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
     
  
-    data = pd.read_csv(input_file)
-    cdr3_header = "cdr3"
+    data = load_dataframe(input_file)
 
-    # data = prepare_data(data, cdr3_header, epitope_header)
-    data = prepare_data(data, cdr3_header)    
+    data = prepare_data(data, cdr3_header, label_header)    
     cdr3 = list(data[cdr3_header])
     
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
-    neighbors = cpm.find_che_phy_dist(sequences_set, substitution_matrix, max_distance)
+    neighbors = cpm.find_che_phy_dist(sequences_set, substitution_matrix, greatest_distance)
     couples_full = map_trunc_to_full(neighbors, full_to_trunc_map)  
 
 
     write_file(couples_full, f"{out_folder}", f"{out_name}")
     save_params(f"{out_folder}/{params_file}", args)
     mst = create_mst(couples_full, f"{out_folder}/mst.csv")
-    cluster(mst, out_folder, labels_path="files/vdjdb_score3.csv")
-
-    # think of a general method to write files
-    # add mst calculation (in cosmo_create.ipynb)
-    # save mst to cosmo file (edge data) (in cosmo_create.ipynb)
-    # add clustering calculation (in clustering.py)
-    # save clustering to cosmo file (node data) (in clustering.py)
+    # df_results = cluster(mst, out_folder, data, label_header)
+    # save_best_cluster(df_results, out_folder)
+    # # think of a general method to write files
 
 
 if __name__ == "__main__":
