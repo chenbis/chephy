@@ -1,4 +1,6 @@
 import chephy_model as cpm
+import old.chephy_model_new_normalization as cpm
+import chephy_model1 as cpm
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
@@ -13,8 +15,14 @@ from matplotlib.colors import to_hex
 import ast
 import matplotlib.pyplot as plt
 import os
+import time
+
+GREATEST_DISTANCE = 72.38373253708322
 
 def map_trunc_to_full(couples, full_to_trunc_map):
+
+    print("Mapping to full sequence length...")
+
     # Initialize an empty dictionary for the full couples
     couples_full = defaultdict(dict)
 
@@ -47,21 +55,6 @@ def find_close_sequences(cdr3, max_dist=0.5, max_mutations=3, right=4, left=4):
     couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
     return couples_full
 
-# def prepare_data(data, cdr3_header, epitope_header):
-    
-#     ## remove cases where cdr3 is associated with multiple epitopes
-
-
-#     # Step 1: Group by 'cdr3' and 'antigen.epitope', and count occurrences
-#     epitope_counts = data.groupby([cdr3_header, epitope_header]).size().reset_index(name='count')
-
-#     # Step 2: Get the most frequent epitope for each 'cdr3'
-#     most_frequent_epitopes = epitope_counts.loc[epitope_counts.groupby(cdr3_header)['count'].idxmax()]
-
-#     # Step 3: Merge with the original dataframe to retain only the most frequent epitopes
-#     df_filtered = data.merge(most_frequent_epitopes[[cdr3_header, epitope_header]], on=[cdr3_header, epitope_header])
-
-#     return df_filtered
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 
@@ -72,6 +65,8 @@ def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
     amino_acid_pattern = r'^[ARNDCEQGHILKMFPSTWYV]+$'
 
     data_filtered = data[data[cdr3_header].str.match(amino_acid_pattern, case=False, na=False)]
+
+    data_filtered = data_filtered[data_filtered[cdr3_header].str.len() >= 8]
 
     # drop duplicates
     data_filtered = data_filtered.drop_duplicates(subset=cdr3_header)
@@ -85,16 +80,16 @@ def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 def get_time():
     return datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
-def save_params(parmas_file, args):
 
+def save_stats(stats_file, args, execution_time):
+    """Save parameters and execution time to stats file."""
     args_dict = vars(args)
-    # Write to a CSV file
-    with open(parmas_file, "w", newline="") as file:
+    args_dict["execution_time_seconds"] = execution_time  # Add execution time
+
+    with open(stats_file, "w", newline="") as file:
         writer = csv.writer(file)
-        # Write header (keys)
-        writer.writerow(args_dict.keys())
-        # Write values
-        writer.writerow(args_dict.values())
+        writer.writerow(args_dict.keys())  # Write headers
+        writer.writerow(args_dict.values())  # Write values
 
 
 def write_file(couples, directory, filename):
@@ -111,6 +106,7 @@ def write_file(couples, directory, filename):
             return [convert_numpy_types(v) for v in obj]
         return obj
     
+    print("Saving neighbors.json")
     path = Path(directory)
 
     path.mkdir(parents=True, exist_ok=True)
@@ -120,10 +116,10 @@ def write_file(couples, directory, filename):
     with open(output_file, "w") as f:
         ujson.dump(processed_data, f)
 
-def calculate_greatest_dist(distance_matrix, seq_len = 8):
-    max_distance = distance_matrix.max().max()
-    greatest_distance = max_distance * seq_len
-    return greatest_distance
+# def calculate_greatest_dist(distance_matrix, seq_len = 8):
+#     max_distance = distance_matrix.max().max()
+#     greatest_distance = max_distance * seq_len
+#     return greatest_distance
 
 # Function to save graph to CSV
 def graph_to_csv(G, output_file):
@@ -135,6 +131,9 @@ def graph_to_csv(G, output_file):
             writer.writerow([u, v, data.get('weight', 1), data.get('dist', 1)])
 
 def create_mst(couples, output_folder):
+
+    print("Creating MST")
+
     G = nx.from_dict_of_dicts(couples)
     mst = nx.minimum_spanning_tree(G, weight='weight')
     graph_to_csv(mst, output_folder)
@@ -220,7 +219,30 @@ def load_dataframe(file_path: str) -> pd.DataFrame:
     else:
         raise ValueError("Unsupported file format. Please provide a CSV or TSV file.")    
 
+def read_csv_files_from_folder(folder_path="/dsi/scratch/home/dsi/solefroni/orforchen/downsamples_clonotype_21355"):
+    """
+    Reads all CSV files in a given folder and concatenates them into a single DataFrame.
+    
+    :param folder_path: Path to the folder containing CSV files.
+    :return: Concatenated Pandas DataFrame.
+    """
+    csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+    dataframes = []
+
+    for file in csv_files:
+        file_path = os.path.join(folder_path, file)
+        df = pd.read_csv(file_path)
+        dataframes.append(df)
+
+    if dataframes:
+        return pd.concat(dataframes, ignore_index=True)
+    else:
+        raise ValueError("No CSV files found in the specified folder.")
+    
+
+
 def main():
+    start_time = time.time()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", default="files/vdjdb_cdr3.csv", help="Input csv for the model to train on, must be a csv file")
@@ -228,7 +250,7 @@ def main():
     parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
     parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
-    parser.add_argument("-ch", "--cdr_header",default="CDR3b", help="crd3 header in the input file. default id CDR3b")
+    parser.add_argument("-ch", "--cdr_header",default="cdr3", help="crd3 header in the input file. default id CDR3b")
     parser.add_argument("-eh", "--epitope_header",default="Epitope", help="Epitope header in the input file. default id Epitope")
 
 
@@ -238,7 +260,7 @@ def main():
     # max_mutations = args.mutations
     out_folder = f"output/{args.out_folder}"
     out_name = "neighbors"
-    params_file = "params.csv"
+    params_file = "stats.csv"
     right = args.right
     left = args.left
     input_file = args.input
@@ -249,12 +271,14 @@ def main():
 
     distances_csv = "distance_matrix.csv"
     distances_df = pd.read_csv(distances_csv, index_col=0)
-    greatest_distance = calculate_greatest_dist(distances_df)
+    greatest_distance = GREATEST_DISTANCE
     substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
     # max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
     
  
-    data = load_dataframe(input_file)
+    # data = load_dataframe(input_file)
+
+    data = read_csv_files_from_folder()
 
     data = prepare_data(data, cdr3_header, label_header)    
     cdr3 = list(data[cdr3_header])
@@ -265,8 +289,12 @@ def main():
 
 
     write_file(couples_full, f"{out_folder}", f"{out_name}")
-    save_params(f"{out_folder}/{params_file}", args)
     mst = create_mst(couples_full, f"{out_folder}/mst.csv")
+
+    execution_time = time.time() - start_time
+    save_stats(f"{out_folder}/{params_file}", args, execution_time)
+
+
     # df_results = cluster(mst, out_folder, data, label_header)
     # save_best_cluster(df_results, out_folder)
     # # think of a general method to write files
