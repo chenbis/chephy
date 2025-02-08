@@ -1,9 +1,8 @@
-import chephy_model as cpm
-import old.chephy_model_new_normalization as cpm
+# import chephy_model as cpm
+# import old.chephy_model_new_normalization as cpm
 import chephy_model1 as cpm
 from collections import defaultdict
 import pandas as pd
-from tqdm import tqdm
 import argparse, datetime, csv
 import ujson
 from pathlib import Path
@@ -18,43 +17,6 @@ import os
 import time
 
 GREATEST_DISTANCE = 72.38373253708322
-
-def map_trunc_to_full(couples, full_to_trunc_map):
-
-    print("Mapping to full sequence length...")
-
-    # Initialize an empty dictionary for the full couples
-    couples_full = defaultdict(dict)
-
-    # Iterate over each truncated sequence and its neighbors
-    for short_seq, neighbors in couples.items():
-        # Get the original sequences for the current short sequence
-        original_seqs = full_to_trunc_map.get(short_seq, [])
-
-        # Iterate over each neighbor and its details
-        for neighbor, details in neighbors.items():
-            # Get the original sequences for the neighbor
-            neighbor_original_seqs = full_to_trunc_map.get(neighbor, [])
-            
-            # Add each pair of original sequences with their weight and dist
-            for original_seq in original_seqs:
-                for neighbor_original_seq in neighbor_original_seqs:
-                    # Ensure the nested structure is maintained
-                    if original_seq not in couples_full:
-                        couples_full[original_seq] = {}
-                    couples_full[original_seq][neighbor_original_seq] = {
-                        "weight": details["weight"],
-                        "dist": details["dist"]
-                    }
-
-    return dict(couples_full)
-
-def find_close_sequences(cdr3, max_dist=0.5, max_mutations=3, right=4, left=4):
-    sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
-    couples_trunc = cpm.find_che_phy_dist(sequences_set, max_mutations, max_dist)
-    couples_full = map_trunc_to_full(couples_trunc, full_to_trunc_map)
-    return couples_full
-
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 
@@ -76,7 +38,6 @@ def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
     return data_filtered
 
 
-
 def get_time():
     return datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -93,51 +54,40 @@ def save_stats(stats_file, args, execution_time):
 
 
 def write_file(couples, directory, filename):
-
-    # Convert NumPy types to native Python types
-    def convert_numpy_types(obj):
-        if isinstance(obj, (integer, floating)):
-            return obj.item()
-        elif isinstance(obj, ndarray):
-            return obj.tolist()
-        elif isinstance(obj, dict):
-            return {k: convert_numpy_types(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_numpy_types(v) for v in obj]
-        return obj
     
-    print("Saving neighbors.json")
+    print("Saving neighbors")
     path = Path(directory)
 
     path.mkdir(parents=True, exist_ok=True)
-    output_file = f"{directory}/{filename}.json"
-    processed_data = convert_numpy_types(couples)
+    couples.to_csv(f"{directory}/{filename}.csv")
 
-    with open(output_file, "w") as f:
-        ujson.dump(processed_data, f)
 
-# def calculate_greatest_dist(distance_matrix, seq_len = 8):
-#     max_distance = distance_matrix.max().max()
-#     greatest_distance = max_distance * seq_len
-#     return greatest_distance
+from scipy.sparse.csgraph import minimum_spanning_tree
+from scipy.sparse import csr_matrix
+import numpy as np
 
-# Function to save graph to CSV
-def graph_to_csv(G, output_file):
-    with open(output_file, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['source', 'target', 'weight', "distance"])
-        
-        for u, v, data in G.edges(data=True):
-            writer.writerow([u, v, data.get('weight', 1), data.get('dist', 1)])
-
-def create_mst(couples, output_folder):
-
+def create_mst(df, output_file):
+    """
+    Create an MST from the distance DataFrame and save it to a CSV file.
+    """
     print("Creating MST")
+    edges = []
+    for i, row in df.iterrows():
+        for j, value in row.items():
+            if isinstance(value, list):
+                edges.append((i, j, value[0], value[1]))
 
-    G = nx.from_dict_of_dicts(couples)
+    G = nx.Graph()
+    for src, tgt, weight, dist in edges:
+        G.add_edge(src, tgt, weight=weight, dist=dist)    
     mst = nx.minimum_spanning_tree(G, weight='weight')
-    graph_to_csv(mst, output_folder)
-    return mst
+
+    # Save MST to CSV
+    mst_edges = [(u, v, d['weight'], d['dist']) for u, v, d in mst.edges(data=True)]
+    mst_df = pd.DataFrame(mst_edges, columns=["source", "target", "weight", "distance"])
+    mst_df.to_csv(output_file, index=False)
+    return mst_df
+
 
 def cluster(mst, output_folder, data, labels_header):
 
@@ -240,17 +190,15 @@ def read_csv_files_from_folder(folder_path="/dsi/scratch/home/dsi/solefroni/orfo
         raise ValueError("No CSV files found in the specified folder.")
     
 
-
 def main():
     start_time = time.time()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", default="files/vdjdb_cdr3.csv", help="Input csv for the model to train on, must be a csv file")
-    # parser.add_argument("-m", "--mutations", default=8, type=int, help="Maximum number of mutations, default is 8")
+    parser.add_argument("-i", "--input", default="files/vdjdb_score3.csv", help="Input csv for the model to train on, must be a csv file")
     parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
     parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
-    parser.add_argument("-ch", "--cdr_header",default="cdr3", help="crd3 header in the input file. default id CDR3b")
+    parser.add_argument("-ch", "--cdr_header",default="cdr3", help="cdr3 header in the input file. default id CDR3b")
     parser.add_argument("-eh", "--epitope_header",default="Epitope", help="Epitope header in the input file. default id Epitope")
 
 
@@ -273,23 +221,20 @@ def main():
     distances_df = pd.read_csv(distances_csv, index_col=0)
     greatest_distance = GREATEST_DISTANCE
     substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
-    # max_substitution_costs = {aa: distances_df.loc[aa].max() for aa in distances_df.index}
     
  
-    # data = load_dataframe(input_file)
+    data = load_dataframe(input_file)
 
-    data = read_csv_files_from_folder()
+    # data = read_csv_files_from_folder()
 
     data = prepare_data(data, cdr3_header, label_header)    
     cdr3 = list(data[cdr3_header])
     
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
-    neighbors = cpm.find_che_phy_dist(sequences_set, substitution_matrix, greatest_distance)
-    couples_full = map_trunc_to_full(neighbors, full_to_trunc_map)  
-
-
-    write_file(couples_full, f"{out_folder}", f"{out_name}")
-    mst = create_mst(couples_full, f"{out_folder}/mst.csv")
+    neighbors = cpm.find_che_phy_dist(sequences_set, full_to_trunc_map, substitution_matrix, greatest_distance)
+    
+    write_file(neighbors, f"{out_folder}", f"{out_name}")
+    mst = create_mst(neighbors, f"{out_folder}/mst.csv")
 
     execution_time = time.time() - start_time
     save_stats(f"{out_folder}/{params_file}", args, execution_time)
