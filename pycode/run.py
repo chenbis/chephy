@@ -1,6 +1,8 @@
 # import chephy_model as cpm
 # import old.chephy_model_new_normalization as cpm
-import chephy_model1 as cpm
+# import chephy_model1 as cpm
+import chephy_model_atchley as cpm
+# import chephy_model_tree_with_matrix as cpm
 from collections import defaultdict
 import pandas as pd
 import argparse, datetime, csv
@@ -16,7 +18,7 @@ import matplotlib.pyplot as plt
 import os
 import time
 
-GREATEST_DISTANCE = 72.38373253708322
+GREATEST_DISTANCE = 25.59151406228244
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 
@@ -61,11 +63,6 @@ def write_file(couples, directory, filename):
     path.mkdir(parents=True, exist_ok=True)
     couples.to_csv(f"{directory}/{filename}.csv")
 
-
-from scipy.sparse.csgraph import minimum_spanning_tree
-from scipy.sparse import csr_matrix
-import numpy as np
-
 def create_mst(df, output_file):
     """
     Create an MST from the distance DataFrame and save it to a CSV file.
@@ -74,7 +71,7 @@ def create_mst(df, output_file):
     edges = []
     for i, row in df.iterrows():
         for j, value in row.items():
-            if isinstance(value, list):
+            if isinstance(value, tuple):
                 edges.append((i, j, value[0], value[1]))
 
     G = nx.Graph()
@@ -219,7 +216,6 @@ def main():
 
     distances_csv = "distance_matrix.csv"
     distances_df = pd.read_csv(distances_csv, index_col=0)
-    greatest_distance = GREATEST_DISTANCE
     substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
     
  
@@ -231,7 +227,7 @@ def main():
     cdr3 = list(data[cdr3_header])
     
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
-    neighbors = cpm.find_che_phy_dist(sequences_set, full_to_trunc_map, substitution_matrix, greatest_distance)
+    neighbors = cpm.find_che_phy_dist(sequences_set, full_to_trunc_map, substitution_matrix, GREATEST_DISTANCE)
     
     write_file(neighbors, f"{out_folder}", f"{out_name}")
     mst = create_mst(neighbors, f"{out_folder}/mst.csv")
