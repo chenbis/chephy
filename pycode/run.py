@@ -1,7 +1,7 @@
 # import chephy_model as cpm
 # import old.chephy_model_new_normalization as cpm
 # import chephy_model1 as cpm
-import chephy_model_atchley as cpm
+import chephy_model as cpm
 # import chephy_model_tree_with_matrix as cpm
 from collections import defaultdict
 import pandas as pd
@@ -17,8 +17,11 @@ import ast
 import matplotlib.pyplot as plt
 import os
 import time
-
-GREATEST_DISTANCE = 25.59151406228244
+from scipy.sparse.csgraph import minimum_spanning_tree
+from scipy.sparse import csr_matrix
+import numpy as np
+from tqdm import tqdm
+import heapq
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 
@@ -56,35 +59,10 @@ def save_stats(stats_file, args, execution_time):
 
 
 def write_file(couples, directory, filename):
-    
     print("Saving neighbors")
     path = Path(directory)
-
     path.mkdir(parents=True, exist_ok=True)
-    couples.to_csv(f"{directory}/{filename}.csv")
-
-def create_mst(df, output_file):
-    """
-    Create an MST from the distance DataFrame and save it to a CSV file.
-    """
-    print("Creating MST")
-    edges = []
-    for i, row in df.iterrows():
-        for j, value in row.items():
-            if isinstance(value, tuple):
-                edges.append((i, j, value[0], value[1]))
-
-    G = nx.Graph()
-    for src, tgt, weight, dist in edges:
-        G.add_edge(src, tgt, weight=weight, dist=dist)    
-    mst = nx.minimum_spanning_tree(G, weight='weight')
-
-    # Save MST to CSV
-    mst_edges = [(u, v, d['weight'], d['dist']) for u, v, d in mst.edges(data=True)]
-    mst_df = pd.DataFrame(mst_edges, columns=["source", "target", "weight", "distance"])
-    mst_df.to_csv(output_file, index=False)
-    return mst_df
-
+    couples.to_parquet(f"{directory}/{filename}.parquet", index=False)
 
 def cluster(mst, output_folder, data, labels_header):
 
@@ -124,7 +102,6 @@ def cluster(mst, output_folder, data, labels_header):
 
 
 def save_best_cluster(df_cluster_stats, out_folder):
-
 
     # Find the row with the highest accuracy
     highest_accuracy_row = df_cluster_stats.loc[df_cluster_stats['accuracy'].idxmax()]
@@ -187,6 +164,44 @@ def read_csv_files_from_folder(folder_path="/dsi/scratch/home/dsi/solefroni/orfo
         raise ValueError("No CSV files found in the specified folder.")
     
 
+def build_mst(chephy_matrix, ham_matrix, sequences_list, full_to_trunc_map, output_file):
+
+    print("Creating MST")
+    # Compute MST
+    mst = minimum_spanning_tree(chephy_matrix).toarray()
+    
+    # Extract MST edges and distances
+    sources, targets, chephy_distances, hamming_distances = [], [], [], []
+    
+    for i in range(mst.shape[0]):
+        for j in range(mst.shape[1]):
+            if mst[i, j] > 0:  # Edge exists in MST
+                sources.append(sequences_list[i])
+                targets.append(sequences_list[j])
+                chephy_distances.append(mst[i, j])
+                hamming_distances.append(ham_matrix[i, j])
+    
+    # Convert to full sequences
+    def map_to_full(truncated_seq):
+        return "|".join(full_to_trunc_map[truncated_seq])
+    
+    source_full = [map_to_full(seq) for seq in sources]
+    target_full = [map_to_full(seq) for seq in targets]
+    
+    # Create DataFrame
+    mst_df = pd.DataFrame({
+        "source": source_full,
+        "target": target_full,
+        "chephy_distance": chephy_distances,
+        "hamming_distance": hamming_distances
+    })
+    
+    # Save to CSV
+    mst_df.to_csv(output_file, index=False)
+    print(f"MST DataFrame saved to {output_file}")
+    
+    return mst_df
+
 def main():
     start_time = time.time()
 
@@ -212,12 +227,6 @@ def main():
     max_dist=1
     label_header = args.epitope_header
     cdr3_header = args.cdr_header
-
-
-    distances_csv = "distance_matrix.csv"
-    distances_df = pd.read_csv(distances_csv, index_col=0)
-    substitution_matrix = {(aa1, aa2): distances_df.loc[aa1, aa2] for aa1 in distances_df.index for aa2 in distances_df.columns}
-    
  
     data = load_dataframe(input_file)
 
@@ -227,10 +236,13 @@ def main():
     cdr3 = list(data[cdr3_header])
     
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
-    neighbors = cpm.find_che_phy_dist(sequences_set, full_to_trunc_map, substitution_matrix, GREATEST_DISTANCE)
-    
-    write_file(neighbors, f"{out_folder}", f"{out_name}")
-    mst = create_mst(neighbors, f"{out_folder}/mst.csv")
+    chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences_set)
+
+
+    path = Path(f"{out_folder}")
+    path.mkdir(parents=True, exist_ok=True)
+
+    mst = build_mst(chephy_matrix, hamming_matrix, sequences_list, full_to_trunc_map, f"{out_folder}/mst.csv")
 
     execution_time = time.time() - start_time
     save_stats(f"{out_folder}/{params_file}", args, execution_time)

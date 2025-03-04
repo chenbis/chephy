@@ -1,63 +1,70 @@
 import numpy as np
+import pandas as pd
 from collections import defaultdict
-from tqdm import tqdm
+from scipy.spatial.distance import pdist, squareform
 
-def compute_distance_matrices(sequences, substitution_matrix):
+
+GREATEST_DIST = 654.9255919999998
+
+
+def compute_chephy_matrix(sequences, atchley_dict):
     """
-    Compute actual, max distance, and Hamming distance matrices for a set of sequences.
-    Optimized using NumPy array operations.
+    Compute distance matrices.
     """
-    n = len(sequences)
-    actual_matrix = np.zeros((n, n))
-    dist_matrix = np.zeros((n, n), dtype=int)
+    print("Calculating chephy")
+    # Convert sequences into numerical representations
+    sequence_vectors = []
+    for seq in sequences:
+        seq_matrix = np.array([list(atchley_dict[aa].values()) for aa in seq])  # Extract numerical values
+        seq_vector = seq_matrix.flatten()  # Flatten to a single vector
+        sequence_vectors.append(seq_vector)
 
-    # Convert sequences to NumPy arrays
-    seq_array = np.array([list(seq) for seq in sequences], dtype="U1")
+    # Compute pairwise sqeuclidean (Euclidean^2) distances
+    distance_matrix = squareform(pdist(sequence_vectors, metric='sqeuclidean'))
+    return distance_matrix
 
-    for i in tqdm(range(n), desc="Computing distance matrices"):
-        seq1 = seq_array[i]
-        for j in range(i + 1, n):
-            seq2 = seq_array[j]
-
-            # Vectorized substitution matrix lookup
-            actual_matrix[i, j] = actual_matrix[j, i] = sum(
-                substitution_matrix.get((a1, a2), 0) for a1, a2 in zip(seq1, seq2)
-            )
-
-            # Compute Hamming distance using NumPy
-            dist_matrix[i, j] = dist_matrix[j, i] = np.count_nonzero(seq1 != seq2)
-
-    return actual_matrix, dist_matrix
-
-
-
-def find_che_phy_dist(sequences_set, substitution_matrix, greatest_distance, max_dist=1):
+def compute_ham_matrix(sequences):
     """
-    Find sequence pairs within a normalized distance threshold, including Hamming distance.
+    Compute Hamming distance matrix using integer encoding.
     """
+    print("Calculating Hamming Matrix...")
+
+    # Get unique characters and assign an integer to each
+    unique_chars = sorted(set("".join(sequences)))  # Extract all unique characters
+    char_to_int = {char: idx for idx, char in enumerate(unique_chars)}
+
+    # Convert sequences into numerical arrays
+    sequence_array = np.array([[char_to_int[char] for char in seq] for seq in sequences])
+
+    # Compute pairwise Hamming distances
+    distance_matrix = squareform(pdist(sequence_array, metric='hamming')) * sequence_array.shape[1]
+
+    return distance_matrix
+
+def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
+    """
+    Compute normalized ChePhy distances and Hamming distances.
+    """
+    print("Loading Atchley Factors...")
+    atchley_df = pd.read_csv("../files/atchley.csv")
+    atchley_dict = atchley_df.set_index('amino.acid').to_dict(orient='index')
+
     sequences_list = list(sequences_set)
 
     # Compute distance matrices
-    actual_matrix, dist_matrix = compute_distance_matrices(sequences_list, substitution_matrix)
+    chephy_matrix = compute_chephy_matrix(sequences_list, atchley_dict)
+    ham_matrix = compute_ham_matrix(sequences_list)
 
-    print("Creating distance dict")
-    neighbors = defaultdict(dict)
+    print("Normalizing ChePhy Matrix...")
+    np.nan_to_num(chephy_matrix, copy=False)
+    normalized_chephy_matrix = (chephy_matrix / greatest_distance).astype(np.float32)
 
-    for i in range(len(sequences_list)):
-        for j in range(i + 1, len(sequences_list)):
-            seq1, seq2 = sequences_list[i], sequences_list[j]
-            normalized_distance = actual_matrix[i, j] / greatest_distance if greatest_distance != 0 else 0
+    return normalized_chephy_matrix, ham_matrix, sequences_list
 
-            neighbors[seq1][seq2] = {
-                "weight": round(normalized_distance, 3),
-                "dist": dist_matrix[i, j]
-            }
-
-    return neighbors
 
 def truncate_sequences(sequences, right=4, left=4):
     """
-    Truncate sequences efficiently by precomputing start and end indices.
+    Truncate sequences efficiently by precomputing start and end indices and map them back to the original sequences.
     """
     print("Truncating Sequences...")
 
@@ -65,7 +72,7 @@ def truncate_sequences(sequences, right=4, left=4):
     sequences_set = set()
 
     for sequence in sequences:
-        if len(sequence) >= 8:
+        if sequence:
             mid = len(sequence) // 2
             trunc_seq = sequence[max(0, mid - left):min(len(sequence), mid + right)]
             sequences_set.add(trunc_seq)

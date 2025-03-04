@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 from scipy.spatial.distance import pdist, squareform, hamming
+from tqdm import tqdm
 
 GREATEST_DIST =  25.59151406228244
 
@@ -47,7 +48,7 @@ def find_che_phy_dist(sequences_set, full_to_trunc_map, a,greatest_distance=GREA
     Compute normalized ChePhy distances and Hamming distances.
     """
     print("Loading Atchley Factors...")
-    atchley_df = pd.read_csv("../files/atchley.csv")
+    atchley_df = pd.read_csv("files/atchley.csv")
     atchley_dict = atchley_df.set_index('amino.acid').to_dict(orient='index')
 
     sequences_list = list(sequences_set)
@@ -58,33 +59,33 @@ def find_che_phy_dist(sequences_set, full_to_trunc_map, a,greatest_distance=GREA
     ham_matrix = compute_ham_matrix(sequences_list)
 
     print("Normalizing ChePhy Matrix...")
-    normalized_matrix = np.nan_to_num(chephy_matrix / greatest_distance, nan=0.0).astype(np.float32)
-    print("Precomputing Full Sequence Mappings...")
+    np.nan_to_num(chephy_matrix, copy=False)
+    normalized_matrix = (chephy_matrix / greatest_distance).astype(np.float32)
 
-    # **Step 1: Create a mapping dictionary for fast lookup**
-    pairwise_mapping = {}
-    for i, trunc_seq1 in enumerate(sequences_list):
-        for j, trunc_seq2 in enumerate(sequences_list):
-            if i < j:  # Avoid redundant calculations
-                dist_info = (round(float(normalized_matrix[i, j]), 3), int(ham_matrix[i, j]))
+    print("Preparing Edge List with Vectorization...")
+    
+    # **Step 1: Precompute Full Sequences for Fast Mapping**
+    full_seqs = sorted(set(seq for seqs in full_to_trunc_map.values() for seq in seqs))
+    full_seq_indices = {seq: i for i, seq in enumerate(full_seqs)}
 
-                # Store mapping of full-sequence pairs
-                for orig_seq1 in original_sequences[trunc_seq1]:
-                    for orig_seq2 in original_sequences[trunc_seq2]:
-                        pairwise_mapping[(orig_seq1, orig_seq2)] = dist_info
-                        pairwise_mapping[(orig_seq2, orig_seq1)] = dist_info  # Ensure symmetry
+    # **Step 2: Convert Distance Matrix to Edge List in One Step**
+    edge_data = []
+    seq_map = {trunc_seq: list(full_to_trunc_map[trunc_seq]) for trunc_seq in sequences_list}
 
-    print("Building DataFrame...")
+    for i in tqdm(range(len(sequences_list)), desc="Processing Sequences"):
+        for j in range(i + 1, len(sequences_list)):  # Avoid duplicates
+            weight = round(float(normalized_matrix[i, j]), 3)
+            hamming_dist = int(ham_matrix[i, j])
 
-    # **Step 2: Convert dictionary to Pandas DataFrame efficiently**
-    all_full_sequences = sorted(set(seq for seqs in original_sequences.values() for seq in seqs))
-    df = pd.DataFrame(index=all_full_sequences, columns=all_full_sequences, dtype=object)
+            # Precomputed Full Sequence Mapping
+            for orig_seq1 in seq_map[sequences_list[i]]:
+                for orig_seq2 in seq_map[sequences_list[j]]:
+                    edge_data.append((full_seq_indices[orig_seq1], full_seq_indices[orig_seq2], weight, hamming_dist))
 
-    # Convert mapping to a DataFrame format (avoids iterating over DataFrame)
-    df = df.applymap(lambda _: None)  # Initialize with None to save memory
-    df.update(pd.Series(pairwise_mapping).unstack())  # Fast update
+    print("Converting to Edge DataFrame...")
+    edge_df = pd.DataFrame(edge_data, columns=['source', 'target', 'weight', 'hamming'])
 
-    return df
+    return edge_df, full_seqs
 
 
 def truncate_sequences(sequences, right=4, left=4):
