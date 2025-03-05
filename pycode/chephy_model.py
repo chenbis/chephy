@@ -73,8 +73,8 @@ def truncate_sequences(sequences, right=4, left=4):
 
     for sequence in sequences:
         if sequence:
-            mid = len(sequence) // 2
-            trunc_seq = sequence[max(0, mid - left):min(len(sequence), mid + right)]
+            mid = (len(sequence) + 1) // 2
+            trunc_seq = sequence[max(0, mid - 4):min(len(sequence), mid + 4)]
             sequences_set.add(trunc_seq)
             full_to_trunc_map[trunc_seq].add(sequence)
 
