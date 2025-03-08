@@ -11,7 +11,6 @@ def compute_chephy_matrix(sequences, atchley_dict):
     """
     Compute distance matrices.
     """
-    print("Calculating chephy")
     # Convert sequences into numerical representations
     sequence_vectors = []
     for seq in sequences:
@@ -27,7 +26,6 @@ def compute_ham_matrix(sequences):
     """
     Compute Hamming distance matrix using integer encoding.
     """
-    print("Calculating Hamming Matrix...")
 
     # Get unique characters and assign an integer to each
     unique_chars = sorted(set("".join(sequences)))  # Extract all unique characters
@@ -45,7 +43,6 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     """
     Compute normalized ChePhy distances and Hamming distances.
     """
-    print("Loading Atchley Factors...")
     atchley_df = pd.read_csv("../files/atchley.csv")
     atchley_dict = atchley_df.set_index('amino.acid').to_dict(orient='index')
 
@@ -55,7 +52,6 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     chephy_matrix = compute_chephy_matrix(sequences_list, atchley_dict)
     ham_matrix = compute_ham_matrix(sequences_list)
 
-    print("Normalizing ChePhy Matrix...")
     np.nan_to_num(chephy_matrix, copy=False)
     normalized_chephy_matrix = (chephy_matrix / greatest_distance).astype(np.float32)
 
@@ -66,7 +62,6 @@ def truncate_sequences(sequences, right=4, left=4):
     """
     Truncate sequences efficiently by precomputing start and end indices and map them back to the original sequences.
     """
-    print("Truncating Sequences...")
 
     full_to_trunc_map = defaultdict(set)
     sequences_set = set()
@@ -74,7 +69,7 @@ def truncate_sequences(sequences, right=4, left=4):
     for sequence in sequences:
         if sequence:
             mid = (len(sequence) + 1) // 2
-            trunc_seq = sequence[max(0, mid - 4):min(len(sequence), mid + 4)]
+            trunc_seq = sequence[max(0, mid - right):min(len(sequence), mid + left)]
             sequences_set.add(trunc_seq)
             full_to_trunc_map[trunc_seq].add(sequence)
 

@@ -1,15 +1,7 @@
-# import chephy_model as cpm
-# import old.chephy_model_new_normalization as cpm
-# import chephy_model1 as cpm
 import chephy_model as cpm
-# import chephy_model_tree_with_matrix as cpm
-from collections import defaultdict
 import pandas as pd
 import argparse, datetime, csv
-import ujson
 from pathlib import Path
-from numpy import integer, floating, ndarray
-import networkx as nx
 import clustering as clustering
 from itertools import product
 from matplotlib.colors import to_hex
@@ -18,10 +10,7 @@ import matplotlib.pyplot as plt
 import os
 import time
 from scipy.sparse.csgraph import minimum_spanning_tree
-from scipy.sparse import csr_matrix
-import numpy as np
-from tqdm import tqdm
-import heapq
+
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
 
@@ -48,6 +37,9 @@ def get_time():
 
 
 def save_stats(stats_file, args, execution_time):
+    
+    # todo add stats to every method
+
     """Save parameters and execution time to stats file."""
     args_dict = vars(args)
     args_dict["execution_time_seconds"] = execution_time  # Add execution time
@@ -57,12 +49,6 @@ def save_stats(stats_file, args, execution_time):
         writer.writerow(args_dict.keys())  # Write headers
         writer.writerow(args_dict.values())  # Write values
 
-
-def write_file(couples, directory, filename):
-    print("Saving neighbors")
-    path = Path(directory)
-    path.mkdir(parents=True, exist_ok=True)
-    couples.to_parquet(f"{directory}/{filename}.parquet", index=False)
 
 def cluster(mst, output_folder, data, labels_header):
 
@@ -166,7 +152,8 @@ def read_csv_files_from_folder(folder_path="/dsi/scratch/home/dsi/solefroni/orfo
 
 def build_mst(chephy_matrix, ham_matrix, sequences_list, full_to_trunc_map, output_file):
 
-    print("Creating MST")
+    # todo: add truncated metadata to the nodes, or maybe the full sequence?
+
     # Compute MST
     mst = minimum_spanning_tree(chephy_matrix).toarray()
     
@@ -198,7 +185,6 @@ def build_mst(chephy_matrix, ham_matrix, sequences_list, full_to_trunc_map, outp
     
     # Save to CSV
     mst_df.to_csv(output_file, index=False)
-    print(f"MST DataFrame saved to {output_file}")
     
     return mst_df
 
@@ -244,13 +230,13 @@ def main():
 
     mst = build_mst(chephy_matrix, hamming_matrix, sequences_list, full_to_trunc_map, f"{out_folder}/mst.csv")
 
-    execution_time = time.time() - start_time
-    save_stats(f"{out_folder}/{params_file}", args, execution_time)
-
 
     # df_results = cluster(mst, out_folder, data, label_header)
     # save_best_cluster(df_results, out_folder)
     # # think of a general method to write files
+
+    execution_time = time.time() - start_time
+    save_stats(f"{out_folder}/{params_file}", args, execution_time)
 
 
 if __name__ == "__main__":
