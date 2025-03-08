@@ -4,3 +4,5 @@ output_files/
 pictures/
 nohup.out
 output/
+output_orr/
+pycode/__pycache__
