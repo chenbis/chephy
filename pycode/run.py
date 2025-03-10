@@ -188,6 +188,9 @@ def build_mst(chephy_matrix, ham_matrix, sequences_list, full_to_trunc_map, outp
     
     return mst_df
 
+
+
+
 def main():
     start_time = time.time()
 
@@ -213,7 +216,11 @@ def main():
     max_dist=1
     label_header = args.epitope_header
     cdr3_header = args.cdr_header
- 
+    
+
+    path = Path(f"{out_folder}")
+    path.mkdir(parents=True, exist_ok=True)
+
     data = load_dataframe(input_file)
 
     # data = read_csv_files_from_folder()
@@ -223,10 +230,10 @@ def main():
     
     sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
     chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences_set)
+    
 
 
-    path = Path(f"{out_folder}")
-    path.mkdir(parents=True, exist_ok=True)
+
 
     mst = build_mst(chephy_matrix, hamming_matrix, sequences_list, full_to_trunc_map, f"{out_folder}/mst.csv")
 
