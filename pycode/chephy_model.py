@@ -43,7 +43,7 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     """
     Compute normalized ChePhy distances and Hamming distances.
     """
-    atchley_df = pd.read_csv("../files/atchley.csv")
+    atchley_df = pd.read_csv("files/atchley.csv")
     atchley_dict = atchley_df.set_index('amino.acid').to_dict(orient='index')
 
     sequences_list = list(sequences_set)
@@ -58,13 +58,14 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     return normalized_chephy_matrix, ham_matrix, sequences_list
 
 
-def truncate_sequences(sequences, right=4, left=4):
+def truncate_sequences(sequences, epitopes, right=4, left=4):
     """
     Truncate sequences efficiently by precomputing start and end indices and map them back to the original sequences.
     """
 
     full_to_trunc_map = defaultdict(set)
     sequences_set = set()
+
 
     for sequence in sequences:
         if sequence:
@@ -73,4 +74,11 @@ def truncate_sequences(sequences, right=4, left=4):
             sequences_set.add(trunc_seq)
             full_to_trunc_map[trunc_seq].add(sequence)
 
-    return sequences_set, full_to_trunc_map
+    # Assign epitopes to truncated sequences based on majority vote
+    trunc_to_epitope = defaultdict(set)
+    for trunc_seq, full_seqs in full_to_trunc_map.items():
+        epitopes_list = [epitopes[list(sequences).index(seq)] for seq in full_seqs if seq in sequences]
+        if epitopes_list:
+            trunc_to_epitope[trunc_seq].update(epitopes_list)
+    
+    return sequences_set, full_to_trunc_map, trunc_to_epitope

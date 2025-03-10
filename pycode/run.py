@@ -200,7 +200,7 @@ def main():
     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
     parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
     parser.add_argument("-ch", "--cdr_header",default="cdr3", help="cdr3 header in the input file. default id CDR3b")
-    parser.add_argument("-eh", "--epitope_header",default="Epitope", help="Epitope header in the input file. default id Epitope")
+    parser.add_argument("-eh", "--epitope_header",default="antigen.epitope", help="Epitope header in the input file. default id Epitope")
 
 
     args = parser.parse_args()
@@ -227,14 +227,11 @@ def main():
 
     data = prepare_data(data, cdr3_header, label_header)    
     cdr3 = list(data[cdr3_header])
-    
-    sequences_set, full_to_trunc_map = cpm.truncate_sequences(cdr3, right, left)
+    epitopes = list(data[label_header])
+
+    sequences_set, full_to_trunc_map, trunc_to_epitope = cpm.truncate_sequences(cdr3, epitopes, right, left)
     chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences_set)
     
-
-
-
-
     mst = build_mst(chephy_matrix, hamming_matrix, sequences_list, full_to_trunc_map, f"{out_folder}/mst.csv")
 
 
