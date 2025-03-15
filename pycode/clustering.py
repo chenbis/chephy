@@ -30,7 +30,6 @@ def spectral_clustering(G, n_clusters):
     adj_matrix = nx.to_numpy_array(G, weight='weight')
 
     # Optional: Add progress if the adjacency matrix is large
-    print("Running Spectral Clustering...")
     sc = SpectralClustering(n_clusters=n_clusters, affinity='precomputed')
     labels = sc.fit_predict(adj_matrix)
 
@@ -68,11 +67,12 @@ def general_clustering(G, method, n_clusters=None):
 
 def evaluate_clustering(clustering_result, labels_df, labels_header):
     """Evaluate clustering results using majority vote for cluster labels."""
-    labels_df = labels_df[labels_df['cdr3'].isin(clustering_result.keys())]
+    
+    labels_df = labels_df[labels_df['index'].isin(clustering_result.keys())]
     labels_df = labels_df.copy()
 
     # Add a cluster column
-    labels_df.loc[:, 'cluster'] = labels_df.loc[:, 'cdr3'].map(clustering_result)
+    labels_df.loc[:, 'cluster'] = labels_df.loc[:, 'index'].map(clustering_result)
 
     # Determine majority label for each cluster
     cluster_labels = {}
@@ -92,11 +92,12 @@ def evaluate_clustering(clustering_result, labels_df, labels_header):
 
     return accuracy, recall, f1
 
-def grid_search_clustering_parallel(G, labels_df, labels_header, method, param_combinations, param_names):
+def grid_search_clustering_parallel(G, labels_df, labels_header, method, param_combinations, param_names, train_indices):
     def evaluate_params(params):
         param_dict = dict(zip(param_names, params))  # Create a parameter dictionary
         try:
             clustering_result = general_clustering(G, method, **param_dict)
+            clustering_result = {train_indices[key]: value for key, value in clustering_result.items()}
             accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df, labels_header)
             return accuracy, recall, f1, param_dict, clustering_result  # Return accuracy, recall, f1, and params
         except Exception:
@@ -120,47 +121,3 @@ class NumpyArrayEncoder(json.JSONEncoder):
             return obj
         else:
             return super().default(obj)
-
-def main():
-    graph_file_path = "pycode/graph create and cluster/cosmo_graph1.csv"
-    labels_file_path = "files/vdjdb_cdr3.csv"
-
-    G = load_graph(graph_file_path)
-    labels_df = pd.read_csv(labels_file_path)
-
-    methods = ['spectral', "kmeans"]
-    param_grid = {
-        'spectral': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
-        'kmeans': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
-    }
-
-    all_results = []  # List to store all results
-
-    for method in methods:
-        method_params = param_grid[method]
-        param_combinations = list(product(*method_params.values()))
-        param_names = list(method_params.keys())  # Extract parameter names
-
-        results = grid_search_clustering_parallel(
-            G, labels_df, method, param_combinations, param_names
-        )
-
-        for result in results:
-            accuracy, recall, f1, params, clusters = result
-
-            all_results.append({
-                'method': method,
-                'params': str(params),
-                'accuracy': accuracy,
-                'recall': recall,
-                'f1_score': f1, 
-                'clusters': str(clusters)
-            })
-
-    # Convert the results to a DataFrame and save it as CSV
-    results_df = pd.DataFrame(all_results)
-    results_df.to_csv('clustering_stats.csv', index=False)
-    print("Results saved to clustering_results.csv")
-
-if __name__ == "__main__":
-    main()

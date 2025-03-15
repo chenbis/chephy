@@ -4,7 +4,7 @@ from collections import defaultdict
 from scipy.spatial.distance import pdist, squareform
 
 
-GREATEST_DIST = 654.9255919999998
+GREATEST_DIST = 654.925
 
 
 def compute_chephy_matrix(sequences, atchley_dict):
@@ -20,7 +20,7 @@ def compute_chephy_matrix(sequences, atchley_dict):
 
     # Compute pairwise sqeuclidean (Euclidean^2) distances
     distance_matrix = squareform(pdist(sequence_vectors, metric='sqeuclidean'))
-    return distance_matrix
+    return np.round(distance_matrix, 3)
 
 def compute_ham_matrix(sequences):
     """
@@ -58,27 +58,16 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     return normalized_chephy_matrix, ham_matrix, sequences_list
 
 
-def truncate_sequences(sequences, epitopes, right=4, left=4):
+def truncate_sequences(df, cdr3_header, right=4, left=4):
     """
-    Truncate sequences efficiently by precomputing start and end indices and map them back to the original sequences.
+    Truncate sequences
     """
 
-    full_to_trunc_map = defaultdict(set)
-    sequences_set = set()
-
-
-    for sequence in sequences:
-        if sequence:
-            mid = (len(sequence) + 1) // 2
-            trunc_seq = sequence[max(0, mid - right):min(len(sequence), mid + left)]
-            sequences_set.add(trunc_seq)
-            full_to_trunc_map[trunc_seq].add(sequence)
-
-    # Assign epitopes to truncated sequences based on majority vote
-    trunc_to_epitope = defaultdict(set)
-    for trunc_seq, full_seqs in full_to_trunc_map.items():
-        epitopes_list = [epitopes[list(sequences).index(seq)] for seq in full_seqs if seq in sequences]
-        if epitopes_list:
-            trunc_to_epitope[trunc_seq].update(epitopes_list)
+    def truncate_sequence(seq):
+        if pd.isna(seq) or not isinstance(seq, str):
+            return None  # Handle NaN or non-string entries gracefully
+        mid = (len(seq) + 1) // 2
+        return seq[max(0, mid - right):min(len(seq), mid + left)]
     
-    return sequences_set, full_to_trunc_map, trunc_to_epitope
+    df["cdr3_truncated"] = df[cdr3_header].apply(truncate_sequence)
+    return df

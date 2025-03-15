@@ -2,20 +2,17 @@ import chephy_model as cpm
 import pandas as pd
 import argparse, datetime, csv
 from pathlib import Path
-import clustering as clustering
-from itertools import product
-from matplotlib.colors import to_hex
-import ast
-import matplotlib.pyplot as plt
+import clustering
 import os
 import time
+import numpy as np
+from sklearn.model_selection import train_test_split
 from scipy.sparse.csgraph import minimum_spanning_tree
+import networkx as nx
+from itertools import product
 
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
-
-    # understand tcrscapes data preparation
-
 
     # remove cdr3 sequences that contain non-aa letters (this also removes nan)
     amino_acid_pattern = r'^[ARNDCEQGHILKMFPSTWYV]+$'
@@ -23,11 +20,6 @@ def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
     data_filtered = data[data[cdr3_header].str.match(amino_acid_pattern, case=False, na=False)]
 
     data_filtered = data_filtered[data_filtered[cdr3_header].str.len() >= 8]
-
-    # drop duplicates
-    data_filtered = data_filtered.drop_duplicates(subset=cdr3_header)
-
-    # move truncate to here
 
     return data_filtered
 
@@ -49,67 +41,6 @@ def save_stats(stats_file, args, execution_time):
         writer.writerow(args_dict.keys())  # Write headers
         writer.writerow(args_dict.values())  # Write values
 
-
-def cluster(mst, output_folder, data, labels_header):
-
-    methods = ['spectral', "kmeans"]
-    param_grid = {
-        'spectral': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
-        'kmeans': {'n_clusters': [199, 190, 180, 170, 165, 160, 150, 100, 200, 50]},
-    }
-
-    all_results = []  # List to store all results
-
-    for method in methods:
-        method_params = param_grid[method]
-        param_combinations = list(product(*method_params.values()))
-        param_names = list(method_params.keys())  # Extract parameter names
-
-        results = clustering.grid_search_clustering_parallel(
-            mst, data, labels_header, method, param_combinations, param_names
-        )
-
-        for result in results:
-            accuracy, recall, f1, params, clusters = result
-
-            all_results.append({
-                'method': method,
-                'params': str(params),
-                'accuracy': accuracy,
-                'recall': recall,
-                'f1_score': f1, 
-                'clusters': str(clusters)
-            })
-
-    # Convert the results to a DataFrame and save it as CSV
-    results_df = pd.DataFrame(all_results)
-    results_df.to_csv(f'{output_folder}/clustering_stats.csv', index=False)
-    return results_df
-
-
-def save_best_cluster(df_cluster_stats, out_folder):
-
-    # Find the row with the highest accuracy
-    highest_accuracy_row = df_cluster_stats.loc[df_cluster_stats['accuracy'].idxmax()]
-
-    # Parse the JSON in the 'clusters' column
-    clusters = ast.literal_eval(highest_accuracy_row["clusters"])
-    method = highest_accuracy_row["method"]
-
-    # Create a DataFrame from the JSON
-    clusters_df = pd.DataFrame(list(clusters.items()), columns=['id', method])
-
-    # Generate unique colors for each cluster
-    num_clusters = len(clusters_df[method].unique())
-    colors = plt.cm.tab20.colors  # Use a colormap with enough distinct colors
-    hex_colors = [to_hex(c) for c in colors]
-    color_mapping = {cluster: hex_colors[i % len(hex_colors)] for i, cluster in enumerate(clusters_df[method].unique())}
-
-    # Add the color column
-    clusters_df['color'] = clusters_df[method].map(color_mapping)
-
-    # Save the resulting DataFrame to a new CSV
-    clusters_df.to_csv(f'{out_folder}/clusters_output.csv', index=False)
 
 def load_dataframe(file_path: str) -> pd.DataFrame:
     """
@@ -148,47 +79,63 @@ def read_csv_files_from_folder(folder_path="/dsi/scratch/home/dsi/solefroni/orfo
         return pd.concat(dataframes, ignore_index=True)
     else:
         raise ValueError("No CSV files found in the specified folder.")
-    
-
-def build_mst(chephy_matrix, ham_matrix, sequences_list, full_to_trunc_map, output_file):
-
-    # todo: add truncated metadata to the nodes, or maybe the full sequence?
-
-    # Compute MST
-    mst = minimum_spanning_tree(chephy_matrix).toarray()
-    
-    # Extract MST edges and distances
-    sources, targets, chephy_distances, hamming_distances = [], [], [], []
-    
-    for i in range(mst.shape[0]):
-        for j in range(mst.shape[1]):
-            if mst[i, j] > 0:  # Edge exists in MST
-                sources.append(sequences_list[i])
-                targets.append(sequences_list[j])
-                chephy_distances.append(mst[i, j])
-                hamming_distances.append(ham_matrix[i, j])
-    
-    # Convert to full sequences
-    def map_to_full(truncated_seq):
-        return "|".join(full_to_trunc_map[truncated_seq])
-    
-    source_full = [map_to_full(seq) for seq in sources]
-    target_full = [map_to_full(seq) for seq in targets]
-    
-    # Create DataFrame
-    mst_df = pd.DataFrame({
-        "source": source_full,
-        "target": target_full,
-        "chephy_distance": chephy_distances,
-        "hamming_distance": hamming_distances
-    })
-    
-    # Save to CSV
-    mst_df.to_csv(output_file, index=False)
-    
-    return mst_df
 
 
+
+def cluster(mst, output_folder, data, labels_header, train_indices):
+
+    methods = ["spectral", "kmeans"]
+    param_grid = {
+        'spectral': {'n_clusters': [250, 220, 199, 190, 180]},
+        'kmeans': {'n_clusters': [250, 220, 199, 190, 180]},
+    }
+
+    all_results = []  # List to store all results
+
+    for method in methods:
+        method_params = param_grid[method]
+        param_combinations = list(product(*method_params.values()))
+        param_names = list(method_params.keys())  # Extract parameter names
+
+        results = clustering.grid_search_clustering_parallel(
+            mst, data, labels_header, method, param_combinations, param_names, train_indices
+        )
+
+        for result in results:
+            accuracy, recall, f1, params, clusters = result
+
+            all_results.append({
+                'method': method,
+                'params': str(params),
+                'accuracy': accuracy,
+                'recall': recall,
+                'f1_score': f1, 
+                'clusters': str(clusters)
+            })
+
+    # Convert the results to a DataFrame and save it as CSV
+    results_df = pd.DataFrame(all_results)
+    results_df.to_csv(f'{output_folder}/training_stats_stats.csv', index=False)
+    return results_df  
+
+def train(train_distance_matrix, train_indices, data, out_folder):
+    # Compute the Minimum Spanning Tree (MST) using SciPy
+    mst_sparse = minimum_spanning_tree(train_distance_matrix)
+
+    # Convert MST to a NetworkX graph
+    mst_graph = nx.from_scipy_sparse_array(mst_sparse)
+    results = cluster(mst_graph, out_folder, data, "antigen.epitope", train_indices)
+    best_cluster = results.loc[results['accuracy'].idxmax(), 'clusters']
+    return best_cluster
+    # results.to_csv("test.csv")
+    # print()
+
+def test(data, test_indices, chephy_matrix, train_indices, clusters):
+    closest_train_indices = np.argmin(chephy_matrix[np.ix_(test_indices, train_indices)], axis=1)
+    test_predictions = {test_idx: clusters[train_indices[closest_idx]] for test_idx, closest_idx in zip(test_indices, closest_train_indices)}
+    accuracy, recall, f1 = clustering.evaluate_clustering(test_predictions, data, "antigen.epitope")
+    print(f"Test Accuracy: {accuracy}, Recall: {recall}, F1-score: {f1}")
+    return test_predictions
 
 
 def main():
@@ -226,19 +173,22 @@ def main():
     # data = read_csv_files_from_folder()
 
     data = prepare_data(data, cdr3_header, label_header)    
-    cdr3 = list(data[cdr3_header])
-    epitopes = list(data[label_header])
+    data = cpm.truncate_sequences(data, cdr3_header, right, left)
 
-    sequences_set, full_to_trunc_map, trunc_to_epitope = cpm.truncate_sequences(cdr3, epitopes, right, left)
-    chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences_set)
-    
-    mst = build_mst(chephy_matrix, hamming_matrix, sequences_list, full_to_trunc_map, f"{out_folder}/mst.csv")
+    sequences = set(data["cdr3_truncated"])
+    chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences)
+    data['index'] = data['cdr3_truncated'].apply(lambda x: sequences_list.index(x) if x in sequences_list else -1)
+    sequence_indices = np.arange(len(sequences_list))
 
+    # Split into train and test (80% train, 20% test)
+    train_indices, test_indices = train_test_split(sequence_indices, test_size=0.2)
 
-    # df_results = cluster(mst, out_folder, data, label_header)
-    # save_best_cluster(df_results, out_folder)
-    # # think of a general method to write files
+    # Extract submatrix for training set
+    train_distance_matrix = chephy_matrix[np.ix_(train_indices, train_indices)]
 
+    clusters = train(train_distance_matrix, train_indices, data, out_folder)
+
+    test(data, test_indices, chephy_matrix, train_indices, clusters)
     execution_time = time.time() - start_time
     save_stats(f"{out_folder}/{params_file}", args, execution_time)
 
