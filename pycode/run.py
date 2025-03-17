@@ -84,10 +84,12 @@ def read_csv_files_from_folder(folder_path="/dsi/scratch/home/dsi/solefroni/orfo
 
 def cluster(mst, output_folder, data, labels_header, train_indices):
 
-    methods = ["spectral", "kmeans"]
+    methods = ["spectral", "louvain", "dbscan"]
     param_grid = {
-        'spectral': {'n_clusters': [250, 220, 199, 190, 180]},
-        'kmeans': {'n_clusters': [250, 220, 199, 190, 180]},
+        'spectral': {'n_clusters': [199, 190, 180]},
+        'kmeans': {'n_clusters': [199, 190, 180]},
+        "louvain":{},
+        "dbscan":{"eps":[0.5, 0.6, 0.55, 0.7], "min_samples":[2, 2, 2, 2]}
     }
 
     all_results = []  # List to store all results
@@ -115,8 +117,21 @@ def cluster(mst, output_folder, data, labels_header, train_indices):
 
     # Convert the results to a DataFrame and save it as CSV
     results_df = pd.DataFrame(all_results)
-    results_df.to_csv(f'{output_folder}/training_stats_stats.csv', index=False)
+    results_df.to_csv(f'{output_folder}/training_stats.csv', index=False)
     return results_df  
+
+def mixmax_normalization(G, epsilon=1e-6):
+    # Extract edge weights
+    weights = [d['weight'] for _, _, d in G.edges(data=True)]
+    
+    if weights:  # Ensure there are edges
+        max_weight = max(weights)
+        min_weight = min(weights)
+
+        # Normalize edge weights
+        for u, v, d in G.edges(data=True):
+            d['weight'] = (d['weight'] - min_weight) / (max_weight - min_weight) if max_weight != min_weight else 0
+            d['weight'] += epsilon  # Avoid zero weights
 
 def train(train_distance_matrix, train_indices, data, out_folder):
     # Compute the Minimum Spanning Tree (MST) using SciPy
@@ -124,6 +139,9 @@ def train(train_distance_matrix, train_indices, data, out_folder):
 
     # Convert MST to a NetworkX graph
     mst_graph = nx.from_scipy_sparse_array(mst_sparse)
+
+    mixmax_normalization(mst_graph)
+
     results = cluster(mst_graph, out_folder, data, "antigen.epitope", train_indices)
     best_cluster = results.loc[results['accuracy'].idxmax(), 'clusters']
     return best_cluster
@@ -189,6 +207,7 @@ def main():
     clusters = train(train_distance_matrix, train_indices, data, out_folder)
 
     test(data, test_indices, chephy_matrix, train_indices, clusters)
+    data.to_csv(f"{out_folder}/data.csv")
     execution_time = time.time() - start_time
     save_stats(f"{out_folder}/{params_file}", args, execution_time)
 

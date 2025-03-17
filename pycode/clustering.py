@@ -1,7 +1,7 @@
 import pandas as pd
 import networkx as nx
 # from community import community_louvain
-from sklearn.cluster import SpectralClustering, KMeans
+from sklearn.cluster import SpectralClustering, KMeans, DBSCAN
 from sklearn.metrics import accuracy_score, recall_score, f1_score
 from node2vec import Node2Vec
 import numpy as np
@@ -10,6 +10,7 @@ from tqdm import tqdm
 from itertools import product
 from joblib import Parallel, delayed
 import json
+from networkx.algorithms.community import louvain_communities
 
 def load_graph(file_path):
     """Load a graph from a CSV file."""
@@ -18,10 +19,32 @@ def load_graph(file_path):
     return G
 
 
-# def louvain_clustering(G):
-#     """Apply Louvain clustering to the graph."""
-#     partition = community_louvain.best_partition(G, weight='weight')
-#     return partition
+def louvain_clustering(G):
+    """Apply Louvain clustering to the graph."""
+    for u, v, d in G.edges(data=True):
+        d['weight'] = 1 - d['weight']
+    louvain_clusters  = louvain_communities(G, weight='weight')
+
+    # Convert list of sets to a dictionary mapping nodes to cluster IDs
+    node_to_cluster = {node: cluster_id for cluster_id, cluster in enumerate(louvain_clusters) for node in cluster}
+    
+    return node_to_cluster
+
+def dbscan_clustering(G, eps=0.5, min_samples=2):
+    """Apply DBSCAN clustering to the graph and return a dictionary of node assignments."""
+    
+    # Convert graph to adjacency matrix and compute distance matrix
+    adj_matrix = nx.to_numpy_array(G)
+    distance_matrix = 1 - adj_matrix  # Convert similarity to distance
+    
+    # Apply DBSCAN
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric="precomputed")
+    dbscan_labels = dbscan.fit_predict(distance_matrix)
+    
+    # Convert cluster labels into a dictionary
+    node_to_cluster = {node: label for node, label in zip(G.nodes, dbscan_labels)}
+    
+    return node_to_cluster
 
 def spectral_clustering(G, n_clusters):
     """Apply Spectral Clustering to the graph."""
@@ -46,21 +69,26 @@ def kmeans_clustering(G, n_clusters):
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(X)
     return {node: kmeans.labels_[i] for i, node in enumerate(G.nodes())}
 
-def general_clustering(G, method, n_clusters=None):
+
+def general_clustering(G, method, params):
     """General clustering function to call specific methods."""
 
     if method == 'louvain':
         return louvain_clustering(G)
     
     elif method == 'spectral':
-        if n_clusters is None:
+        if params is None:
             raise ValueError("n_clusters must be specified for Spectral Clustering.")
-        return spectral_clustering(G, n_clusters)
+        return spectral_clustering(G, **params)
     
     elif method == 'kmeans':
-        if n_clusters is None:
+        if params is None:
             raise ValueError("n_clusters must be specified for KMeans Clustering.")
-        return kmeans_clustering(G, n_clusters)
+        return kmeans_clustering(G, **params)
+    
+    elif method == "dbscan":
+        return dbscan_clustering(G, **params)
+
     else:
         raise ValueError(f"Unknown clustering method: {method}")
 
@@ -96,7 +124,7 @@ def grid_search_clustering_parallel(G, labels_df, labels_header, method, param_c
     def evaluate_params(params):
         param_dict = dict(zip(param_names, params))  # Create a parameter dictionary
         try:
-            clustering_result = general_clustering(G, method, **param_dict)
+            clustering_result = general_clustering(G, method, param_dict)
             clustering_result = {train_indices[key]: value for key, value in clustering_result.items()}
             accuracy, recall, f1 = evaluate_clustering(clustering_result, labels_df, labels_header)
             return accuracy, recall, f1, param_dict, clustering_result  # Return accuracy, recall, f1, and params
