@@ -89,7 +89,7 @@ def cluster(mst, output_folder, data, labels_header, train_indices):
         'spectral': {'n_clusters': [199, 190, 180]},
         'kmeans': {'n_clusters': [199, 190, 180]},
         "louvain":{},
-        "dbscan":{"eps":[0.5, 0.6, 0.55, 0.7], "min_samples":[2, 2, 2, 2]}
+        "dbscan":{"eps":[0.9], "min_samples":[2]}
     }
 
     all_results = []  # List to store all results
@@ -133,12 +133,10 @@ def mixmax_normalization(G, epsilon=1e-6):
             d['weight'] = (d['weight'] - min_weight) / (max_weight - min_weight) if max_weight != min_weight else 0
             d['weight'] += epsilon  # Avoid zero weights
 
-def train(train_distance_matrix, train_indices, data, out_folder):
-    # Compute the Minimum Spanning Tree (MST) using SciPy
-    mst_sparse = minimum_spanning_tree(train_distance_matrix)
+def train(train_distance_matrix, train_indices, data, out_folder, hamming_matrix):
 
-    # Convert MST to a NetworkX graph
-    mst_graph = nx.from_scipy_sparse_array(mst_sparse)
+    mst_graph = create_graph(hamming_matrix, train_distance_matrix, threshold=2)
+    # mst_graph = construct_enhanced_graph(train_distance_matrix, 3)
 
     mixmax_normalization(mst_graph)
 
@@ -155,6 +153,72 @@ def test(data, test_indices, chephy_matrix, train_indices, clusters):
     print(f"Test Accuracy: {accuracy}, Recall: {recall}, F1-score: {f1}")
     return test_predictions
 
+def construct_enhanced_graph(distance_matrix, min_edges):
+    """
+    Constructs a graph from a distance matrix, ensuring each node has at least 'min_edges' connections.
+
+    Parameters:
+        distance_matrix (numpy.ndarray): The original n*n distance matrix.
+        min_edges (int): Minimum number of edges each node should have.
+
+    Returns:
+        nx.Graph: The resulting graph with the MST and additional edges.
+    """
+    # Compute the Minimum Spanning Tree (MST)
+    mst_sparse = minimum_spanning_tree(distance_matrix)
+    mst_graph = nx.from_scipy_sparse_array(mst_sparse)
+    if min_edges == 1:
+        return mst_graph
+    
+    num_nodes = distance_matrix.shape[0]
+
+    # Ensure each node has at least 'min_edges' connections
+    for node in range(num_nodes):
+        current_edges = list(mst_graph.neighbors(node))
+        num_current_edges = len(current_edges)
+
+        if num_current_edges < min_edges:
+            # Extract distances from the node to all others
+            node_distances = [(j, distance_matrix[node, j]) for j in range(num_nodes) 
+                              if j != node and not mst_graph.has_edge(node, j)]
+            
+            # Sort potential edges by weight
+            node_distances.sort(key=lambda x: x[1])  # Sort by distance (ascending)
+            
+            # Add edges with lowest weights until the node has 'min_edges' edges
+            for neighbor, weight in node_distances:
+                if len(list(mst_graph.neighbors(node))) >= min_edges:
+                    break
+                mst_graph.add_edge(node, neighbor, weight=weight)
+
+    return mst_graph
+
+
+def create_graph(hamming_matrix, chephy_matrix, threshold=3):
+    """
+    Create a graph based on the given matrices.
+    
+    1. Add edges with Hamming distance < threshold.
+    2. Check if the graph is connected.
+    3. If not, iteratively add the lowest-weight Chephy edge until connected.
+    
+    :param hamming_matrix: N x N Hamming distance matrix
+    :param chephy_matrix: N x N Chephy distance matrix
+    :param threshold: Hamming distance threshold for initial edges
+    :return: Connected graph (NetworkX object)
+    """
+
+
+    mst_sparse = minimum_spanning_tree(chephy_matrix)
+    mst_graph = nx.from_scipy_sparse_array(mst_sparse)
+
+    # Step 1: Add initial edges based on Hamming distance
+    for i in range(len(chephy_matrix)):
+        for j in range(i + 1, len(chephy_matrix)):
+            if hamming_matrix[i, j] <= threshold:
+                mst_graph.add_edge(i, j, weight=chephy_matrix[i, j])
+
+    return mst_graph
 
 def main():
     start_time = time.time()
@@ -198,13 +262,17 @@ def main():
     data['index'] = data['cdr3_truncated'].apply(lambda x: sequences_list.index(x) if x in sequences_list else -1)
     sequence_indices = np.arange(len(sequences_list))
 
+
+    
+
     # Split into train and test (80% train, 20% test)
     train_indices, test_indices = train_test_split(sequence_indices, test_size=0.2)
 
     # Extract submatrix for training set
     train_distance_matrix = chephy_matrix[np.ix_(train_indices, train_indices)]
+    hamming_training_matrix = hamming_matrix[np.ix_(train_indices, train_indices)]
 
-    clusters = train(train_distance_matrix, train_indices, data, out_folder)
+    clusters = train(train_distance_matrix, train_indices, data, out_folder, hamming_training_matrix)
 
     test(data, test_indices, chephy_matrix, train_indices, clusters)
     data.to_csv(f"{out_folder}/data.csv")
