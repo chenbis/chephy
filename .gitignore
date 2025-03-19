@@ -6,3 +6,4 @@ nohup.out
 output/
 output_orr/
 pycode/__pycache__
+data/mag
