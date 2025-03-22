@@ -43,7 +43,7 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     """
     Compute normalized ChePhy distances and Hamming distances.
     """
-    atchley_df = pd.read_csv("files/atchley.csv")
+    atchley_df = pd.read_csv("/home/dsi/chenbis/repos/sol_lab/files/atchley.csv")
     atchley_dict = atchley_df.set_index('amino.acid').to_dict(orient='index')
 
     sequences_list = list(sequences_set)
