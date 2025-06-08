@@ -1,10 +1,12 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 from scipy.spatial.distance import pdist, squareform
 
 
 GREATEST_DIST = 654.925
-
+atchley_path = "/work/sol_lab/files/atchley.csv"
+atchley_df = pd.read_csv(atchley_path)
+atchley_dict = atchley_df.set_index("amino.acid").to_dict(orient="index")
 
 def compute_chephy_matrix(sequences, atchley_dict):
     """
@@ -18,43 +20,39 @@ def compute_chephy_matrix(sequences, atchley_dict):
         sequence_vectors.append(seq_vector)
 
     # Compute pairwise sqeuclidean (Euclidean^2) distances
-    distance_matrix = squareform(pdist(sequence_vectors, metric='sqeuclidean'))
-    return np.round(distance_matrix, 3)
+    condensed_distances = pdist(sequence_vectors, metric='sqeuclidean')
+    condensed_distances = np.round(condensed_distances, 3)  
+    return np.round(condensed_distances, 3).astype(np.float32)
 
-def compute_ham_matrix(sequences):
-    """
-    Compute Hamming distance matrix using integer encoding.
-    """
+# def compute_ham_matrix(sequences):
+#     """
+#     Compute condensed Hamming distance matrix using integer encoding.
+#     """
+#     unique_chars = sorted(set("".join(sequences)))
+#     char_to_int = {char: idx for idx, char in enumerate(unique_chars)}
 
-    # Get unique characters and assign an integer to each
-    unique_chars = sorted(set("".join(sequences)))  # Extract all unique characters
-    char_to_int = {char: idx for idx, char in enumerate(unique_chars)}
+#     sequence_array = np.array([[char_to_int[char] for char in seq] for seq in sequences])
 
-    # Convert sequences into numerical arrays
-    sequence_array = np.array([[char_to_int[char] for char in seq] for seq in sequences])
+#     # Condensed (upper triangle) Hamming distances
+#     condensed_hamming = pdist(sequence_array, metric='hamming') * sequence_array.shape[1]
+#     return squareform(np.round(condensed_hamming, 3).astype(np.float32))
 
-    # Compute pairwise Hamming distances
-    distance_matrix = squareform(pdist(sequence_array, metric='hamming')) * sequence_array.shape[1]
-
-    return distance_matrix
 
 def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     """
-    Compute normalized ChePhy distances and Hamming distances.
+    Compute normalized condensed ChePhy and Hamming distances.
     """
-    atchley_df = pd.read_csv("/home/dsi/chenbis/repos/sol_lab/files/atchley.csv")
-    atchley_dict = atchley_df.set_index('amino.acid').to_dict(orient='index')
-
     sequences_list = list(sequences_set)
 
-    # Compute distance matrices
-    chephy_matrix = compute_chephy_matrix(sequences_list, atchley_dict)
-    ham_matrix = compute_ham_matrix(sequences_list)
+    chephy_condensed = compute_chephy_matrix(sequences_list)
+    print("chephy done")
+    # hamming_matrix = compute_ham_condensed(sequences_list)
 
-    np.nan_to_num(chephy_matrix, copy=False)
-    normalized_chephy_matrix = (chephy_matrix / greatest_distance).astype(np.float32)
-
-    return normalized_chephy_matrix, ham_matrix, sequences_list
+    np.nan_to_num(chephy_condensed, copy=False)
+    normalized_chephy = (chephy_condensed / greatest_distance).astype(np.float32)
+    normalized_chephy = np.round(normalized_chephy, 3).astype(np.float32)
+    print("normalized done")
+    return squareform(normalized_chephy), sequences_list
 
 
 def truncate_sequences(df, cdr3_header, right=4, left=4):

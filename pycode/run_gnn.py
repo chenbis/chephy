@@ -2,14 +2,9 @@ import chephy_model as cpm
 import pandas as pd
 import argparse, datetime, csv
 from pathlib import Path
-import clustering
 import os
 import time
 import numpy as np
-from sklearn.model_selection import train_test_split
-from scipy.sparse.csgraph import minimum_spanning_tree
-import networkx as nx
-from itertools import product
 
 
 def prepare_data(data, cdr3_header, epitope_header, score_header='vdjdb.score'):
