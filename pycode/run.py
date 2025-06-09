@@ -2,7 +2,7 @@ import chephy_model as cpm
 import pandas as pd
 import argparse, datetime, csv
 from pathlib import Path
-import clustering
+# import clustering
 import os
 import time
 import numpy as np
@@ -220,65 +220,65 @@ def create_graph(hamming_matrix, chephy_matrix, threshold=3):
 
     return mst_graph
 
-def main():
-    start_time = time.time()
+# def main():
+#     start_time = time.time()
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", default="files/vdjdb_score3.csv", help="Input csv for the model to train on, must be a csv file")
-    parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
-    parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
-    parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
-    parser.add_argument("-ch", "--cdr_header",default="cdr3", help="cdr3 header in the input file. default id CDR3b")
-    parser.add_argument("-eh", "--epitope_header",default="antigen.epitope", help="Epitope header in the input file. default id Epitope")
-
-
-    args = parser.parse_args()
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("-i", "--input", default="files/vdjdb_score3.csv", help="Input csv for the model to train on, must be a csv file")
+#     parser.add_argument("-of", "--out_folder", default=get_time(), help="Name of output sub folder, default is current time")
+#     parser.add_argument("-r", "--right", default=4, help="Trim from the right side, default is 4")
+#     parser.add_argument("-l", "--left", default=4, help="Trim from the left side, default is 4")
+#     parser.add_argument("-ch", "--cdr_header",default="cdr3", help="cdr3 header in the input file. default id CDR3b")
+#     parser.add_argument("-eh", "--epitope_header",default="antigen.epitope", help="Epitope header in the input file. default id Epitope")
 
 
-    # max_mutations = args.mutations
-    out_folder = f"output/{args.out_folder}"
-    out_name = "neighbors"
-    params_file = "stats.csv"
-    right = args.right
-    left = args.left
-    input_file = args.input
-    max_dist=1
-    label_header = args.epitope_header
-    cdr3_header = args.cdr_header
+#     args = parser.parse_args()
+
+
+#     # max_mutations = args.mutations
+#     out_folder = f"output/{args.out_folder}"
+#     out_name = "neighbors"
+#     params_file = "stats.csv"
+#     right = args.right
+#     left = args.left
+#     input_file = args.input
+#     max_dist=1
+#     label_header = args.epitope_header
+#     cdr3_header = args.cdr_header
     
 
-    path = Path(f"{out_folder}")
-    path.mkdir(parents=True, exist_ok=True)
+#     path = Path(f"{out_folder}")
+#     path.mkdir(parents=True, exist_ok=True)
 
-    data = load_dataframe(input_file)
+#     data = load_dataframe(input_file)
 
-    # data = read_csv_files_from_folder()
+#     # data = read_csv_files_from_folder()
 
-    data = prepare_data(data, cdr3_header, label_header)    
-    data = cpm.truncate_sequences(data, cdr3_header, right, left)
+#     data = prepare_data(data, cdr3_header, label_header)    
+#     data = cpm.truncate_sequences(data, cdr3_header, right, left)
 
-    sequences = set(data["cdr3_truncated"])
-    chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences)
-    data['index'] = data['cdr3_truncated'].apply(lambda x: sequences_list.index(x) if x in sequences_list else -1)
-    sequence_indices = np.arange(len(sequences_list))
+#     sequences = set(data["cdr3_truncated"])
+#     chephy_matrix, hamming_matrix, sequences_list = cpm.find_che_phy_dist(sequences)
+#     data['index'] = data['cdr3_truncated'].apply(lambda x: sequences_list.index(x) if x in sequences_list else -1)
+#     sequence_indices = np.arange(len(sequences_list))
 
 
     
 
-    # Split into train and test (80% train, 20% test)
-    train_indices, test_indices = train_test_split(sequence_indices, test_size=0.2)
+#     # Split into train and test (80% train, 20% test)
+#     train_indices, test_indices = train_test_split(sequence_indices, test_size=0.2)
 
-    # Extract submatrix for training set
-    train_distance_matrix = chephy_matrix[np.ix_(train_indices, train_indices)]
-    hamming_training_matrix = hamming_matrix[np.ix_(train_indices, train_indices)]
+#     # Extract submatrix for training set
+#     train_distance_matrix = chephy_matrix[np.ix_(train_indices, train_indices)]
+#     hamming_training_matrix = hamming_matrix[np.ix_(train_indices, train_indices)]
 
-    clusters = train(train_distance_matrix, train_indices, data, out_folder, hamming_training_matrix)
+#     clusters = train(train_distance_matrix, train_indices, data, out_folder, hamming_training_matrix)
 
-    test(data, test_indices, chephy_matrix, train_indices, clusters)
-    data.to_csv(f"{out_folder}/data.csv")
-    execution_time = time.time() - start_time
-    save_stats(f"{out_folder}/{params_file}", args, execution_time)
+#     test(data, test_indices, chephy_matrix, train_indices, clusters)
+#     data.to_csv(f"{out_folder}/data.csv")
+#     execution_time = time.time() - start_time
+#     save_stats(f"{out_folder}/{params_file}", args, execution_time)
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
