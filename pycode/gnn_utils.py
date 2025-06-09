@@ -3,6 +3,7 @@ import torch
 from torch_geometric.data import HeteroData
 from scipy.sparse.csgraph import minimum_spanning_tree
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_aa_interaction_features(sequence, atchley_dict):
@@ -92,7 +93,7 @@ def get_hybrid_sequence_features(sequence, atchley_dict):
         kmer_stats,  # 10 features
         position_features,  # 15 features
         interaction_features  # 15 features
-    ]), dtype=torch.float32)
+    ]), dtype=torch.float32).to(device)
 
 def build_edges_with_mst_and_enrichment(
     chephy_matrix,
@@ -168,28 +169,25 @@ def build_hetero_graph(
     # --- Step 3: TCR similarity edges via MST/thresholds using only ChePhy distance ---
     if use_mst:
         print("computing MST")
-        # Use scipy's minimum_spanning_tree for MST computation
         mst_sparse = minimum_spanning_tree(chephy_matrix)
-        print("scipy done")
-        mst_dense = mst_sparse.toarray()
-        print("toarray done")
-        mst_edges = []
-        for i in range(N):
-            for j in range(N):
-                if mst_dense[i, j] > 0:
-                    mst_edges.append((i, j, mst_dense[i, j]))
+        coo = mst_sparse.tocoo()
+        mst_edges = list(zip(coo.row, coo.col, coo.data))
+        print("MST done")
 
         selected_edges = mst_edges
 
         if enrich:
             print("enrichment")
-            # Add extra edges within threshold without duplicating MST edges
             mst_edge_set = set((u, v) for u, v, _ in mst_edges)
-            for i in range(N):
-                for j in range(i + 1, N):
-                    weight = chephy_matrix[i, j]
-                    if weight <= distance_threshold and (i, j) not in mst_edge_set:
-                        selected_edges.append((i, j, weight))
+            mask = (chephy_matrix <= distance_threshold)
+            triu_mask = np.triu(mask, k=1)
+            new_rows, new_cols = np.where(triu_mask)
+            enriched_edges = [
+                (i, j, chephy_matrix[i, j])
+                for i, j in zip(new_rows, new_cols)
+                if (i, j) not in mst_edge_set
+            ]
+            selected_edges.extend(enriched_edges)
 
         edge_array = np.array([(u, v) for u, v, _ in selected_edges], dtype=np.int64).T
         tcr_sim_edge_index = (
@@ -207,11 +205,11 @@ def build_hetero_graph(
     # --- Step 1: Node features ---
     feature_dim = len(next(iter(atchley_dict.values())))
     epitope_features = torch.stack([
-        get_hybrid_sequence_features(epi, atchley_dict) for epi in epitopes
+        get_hybrid_sequence_features(epi, atchley_dict).to(device) for epi in epitopes
     ])
 
     tcr_features = torch.stack([
-        get_hybrid_sequence_features(seq, atchley_dict) for seq in sequences_list
+        get_hybrid_sequence_features(seq, atchley_dict).to(device) for seq in sequences_list
     ])
     print("Step 2, Done!")
 
@@ -233,6 +231,7 @@ def build_hetero_graph(
     data_hetero['tcr', 'binds', 'epitope'].edge_index = edge_index
     data_hetero['epitope', 'rev_binds', 'tcr'].edge_index = rev_edge_index
     data_hetero['tcr', 'similar', 'tcr'].edge_index = tcr_sim_edge_index
+    data_hetero = data_hetero.to(device)
     print("Step 4, Done!")
 
     # --- Step 5: Optional multi-label targets ---
