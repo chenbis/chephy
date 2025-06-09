@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import SAGEConv, HeteroConv, Linear, TransformerConv, FiLMConv
 import torchmetrics
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class HeteroTCR(torch.nn.Module):
     def __init__(self, metadata, hidden_channels=1024, num_layers=3, net_type='SAGE'):
