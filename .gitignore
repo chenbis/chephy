@@ -1,9 +1,6 @@
-mutations.csv
-mutations/
-output_files/
-pictures/
-nohup.out
 output/
-output_orr/
 pycode/__pycache__
 data/mag
+benchmark_TCRprediction/
+epytope/
+pycode/tcr_benchmark

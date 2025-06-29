@@ -29,20 +29,6 @@ class HeteroGNN(torch.nn.Module):
                     for edge_type in metadata[1]
                 })
                 self.convs.append(conv)
-        elif net_type == 'TF':
-            for _ in range(num_layers):
-                conv = HeteroConv({
-                    edge_type: TransformerConv(-1, hidden_channels)
-                    for edge_type in metadata[1]
-                })
-                self.convs.append(conv)
-        elif net_type == 'FiLM':
-            for _ in range(num_layers):
-                conv = HeteroConv({
-                    edge_type: FiLMConv((-1,-1), hidden_channels)
-                    for edge_type in metadata[1]
-                })
-                self.convs.append(conv)
 
     def forward(self, x_dict, edge_index_dict):
         for conv in self.convs:
@@ -69,11 +55,7 @@ class MLP(torch.nn.Module):
         x = torch.cat([x_dict['tcr'][row], x_dict['epitope'][col]], dim=-1)
 
         x = self.lin1(x).relu()
-        # x = self.bn1(x)
-        # x = self.relu(x)
         x = self.lin2(x).relu()
-        # x = self.bn2(x)
-        # x = self.relu(x)
         x = self.lin3(x)
         x = self.sigmoid(x)
         return x.view(-1)
@@ -96,18 +78,17 @@ def train(model, optimizer, data_hetero_train, data_hetero_test, train_edge_labe
     with torch.no_grad():
         out_test = model(data_hetero_test.x_dict, data_hetero_test.edge_index_dict, test_edge_label_index)
         test_loss = loss_fn(out_test, torch.tensor(y_test).float().to(device))
-        test_binary_accuracy = torchmetrics.functional.accuracy(out_test, torch.tensor(y_test).int().to(device))
+        test_binary_accuracy = torchmetrics.functional.accuracy(out_test, torch.tensor(y_test).int().to(device), threshold=0.7)
         test_ROCAUC = torchmetrics.functional.auroc(out_test, torch.tensor(y_test).int().to(device))
 
     return train_loss, train_binary_accuracy, train_ROCAUC, test_loss, test_binary_accuracy, test_ROCAUC
 
-def predict(new_model, data, edge_label_index, y):
+def predict(model, data, edge_label_index, y):
     loss_fn = torch.nn.BCELoss()
-    new_model.eval()
+    model.eval()
     with torch.no_grad():
-        out_test = new_model(data.x_dict, data.edge_index_dict, edge_label_index)
-        # print(out_test)
+        out_test = model(data.x_dict, data.edge_index_dict, edge_label_index)
         test_loss = loss_fn(out_test, torch.tensor(y).float().to(device))
-        test_binary_accuracy = torchmetrics.functional.accuracy(out_test, torch.tensor(y).int().to(device))
+        test_binary_accuracy = torchmetrics.functional.accuracy(out_test, torch.tensor(y).int().to(device), threshold=0.7)
         test_ROCAUC = torchmetrics.functional.auroc(out_test, torch.tensor(y).int().to(device))
     return test_loss, test_binary_accuracy, test_ROCAUC, out_test
