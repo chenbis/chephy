@@ -32,13 +32,13 @@ def compute_chephy_matrix_gpu(sequences):
     # Convert to Atchley feature vectors
     features = aa_vecs[padded]  # (N, L, 5)
     vectors = features.reshape(len(sequences), -1)  # (N, L*5)
-    print("sequence_vectors done on GPU")
+    # print("sequence_vectors done on GPU")
     # Compute distances
     condensed = pdist(vectors, metric='sqeuclidean')
-    print("pdist done on GPU")
+    # print("pdist done on GPU")
     # full_matrix = condensed_to_squareform(condensed, len(sequences))
     # print("squareform done on GPU")
-    return cp.round(condensed, 3).astype(cp.float32)
+    return cp.round(condensed, 3).astype(cp.float16)
 
 
 def compute_chephy_matrix_cpu(sequences):
@@ -58,11 +58,11 @@ def compute_chephy_matrix_cpu(sequences):
     # Lookup Atchley vectors and flatten
     feature_matrix = aa_vecs[index_matrix]  # shape (N, L, 5)
     sequence_vectors = feature_matrix.reshape(len(sequences), -1)
-    print("sequence_vectors done on CPU")
+    # print("sequence_vectors done on CPU")
     # Compute pairwise distances
     condensed = pdist(sequence_vectors, metric='sqeuclidean')
-    print("pdist done on CPU")
-    return np.round(condensed, 3).astype(np.float32)
+    # print("pdist done on CPU")
+    return np.round(condensed, 3).astype(np.float16)
 
 
 def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
@@ -78,11 +78,11 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
         _ = cp.array([0.0])
         chephy_matrix = compute_chephy_matrix_gpu(sequences_list)
         chephy_matrix = cp.nan_to_num(chephy_matrix)
-        chephy_matrix = (chephy_matrix / greatest_distance).astype(cp.float32)
+        chephy_matrix = (chephy_matrix / greatest_distance).astype(cp.float16)
         chephy_matrix = cp.round(chephy_matrix, 3)
-        print("normalized done on GPU")
+        # print("normalized done on GPU")
         chephy_matrix = chephy_matrix.get()  # Transfer back to CPU
-        print("moved to CPU")
+        # print("moved to CPU")
 
         
         # return normalized.get(), sequences_list
@@ -91,11 +91,11 @@ def find_che_phy_dist(sequences_set,greatest_distance=GREATEST_DIST):
     except Exception:
         chephy_matrix = compute_chephy_matrix_cpu(sequences_list)
         np.nan_to_num(chephy_matrix, copy=False)
-        chephy_matrix = (chephy_matrix / greatest_distance).astype(np.float32)
-        chephy_matrix = np.round(chephy_matrix, 3).astype(np.float32)
-        print("normalized done on CPU")
+        chephy_matrix = (chephy_matrix / greatest_distance).astype(np.float16)
+        chephy_matrix = np.round(chephy_matrix, 3).astype(np.float16)
+        # print("normalized done on CPU")
 
-    return squareform(chephy_matrix), sequences_list
+    return chephy_matrix, sequences_list
 
 
 def truncate_sequences(df, cdr3_header, right=4, left=4):
