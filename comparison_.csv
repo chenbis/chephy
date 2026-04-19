@@ -1,0 +1,13 @@
+Model,based,AUROC
+DLpTCR,No epitope overlap,0.5292
+DLpTCR,TCR+Epitope overlap,0.6257
+DLpTCR,No TCR+Epitope overlap,0.5127
+DLpTCR,No TCR overlap,0.634
+NetTCR-2.0,No epitope overlap,0.5162
+NetTCR-2.0,TCR+Epitope overlap,0.537
+NetTCR-2.0,No TCR+Epitope overlap,0.5368
+NetTCR-2.0,No TCR overlap,0.5727
+Chephy-GNN,No epitope overlap,0.6651
+Chephy-GNN,TCR+Epitope overlap,0.6838
+Chephy-GNN,No TCR+Epitope overlap,0.6686
+Chephy-GNN,No TCR overlap,0.6731

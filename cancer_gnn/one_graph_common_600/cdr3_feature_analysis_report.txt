@@ -1,0 +1,126 @@
+
+CDR3 FEATURE IMPORTANCE ANALYSIS REPORT
+================================================================================
+
+OVERALL STATISTICS:
+  - Total CDR3 sequences analyzed: 600
+  - Test Accuracy: 0.8235
+  - Training Patients: 66
+  - Test Patients: 17
+
+IMPORTANCE METRICS EXPLANATION:
+  1. Activation Importance: Based on CDR3 membership weights in the graph
+  2. Edge Importance: Based on CDR3-CDR3 similarity edge contributions
+  3. Membership Weight Sum: Total weight across all patients
+  4. Composite Importance: Weighted average of above metrics (0.35/0.35/0.30)
+
+TOP 10 MOST IMPORTANT CDR3 SEQUENCES:
+--------------------------------------------------------------------------------
+
+Rank 1: CVVSDRGSTLGRLYF
+  - Composite Importance: 0.651045
+  - Activation Importance: 78.957504
+  - Edge Importance: 1.807842
+  - Used by 45 patients
+  - Total weight: 78.9575
+
+Rank 2: CAVMDSNYQLIW
+  - Composite Importance: 0.531345
+  - Activation Importance: 61.068523
+  - Edge Importance: 5.938365
+  - Used by 29 patients
+  - Total weight: 61.0685
+
+Rank 3: CAVNAGGTSYGKLTF
+  - Composite Importance: 0.513270
+  - Activation Importance: 27.734543
+  - Edge Importance: 35.956474
+  - Used by 46 patients
+  - Total weight: 27.7346
+
+Rank 4: CAVRDSNYQLIW
+  - Composite Importance: 0.502228
+  - Activation Importance: 57.887081
+  - Edge Importance: 5.820216
+  - Used by 32 patients
+  - Total weight: 57.8871
+
+Rank 5: CAENAGGTSYGKLTF
+  - Composite Importance: 0.432775
+  - Activation Importance: 18.599264
+  - Edge Importance: 35.956474
+  - Used by 36 patients
+  - Total weight: 18.5993
+
+Rank 6: CAANAGGTSYGKLTF
+  - Composite Importance: 0.431455
+  - Activation Importance: 18.449450
+  - Edge Importance: 35.956474
+  - Used by 33 patients
+  - Total weight: 18.4494
+
+Rank 7: CAVNTGGFKTIF
+  - Composite Importance: 0.427133
+  - Activation Importance: 43.145161
+  - Edge Importance: 11.788374
+  - Used by 52 patients
+  - Total weight: 43.1452
+
+Rank 8: CAVRDGDYKLSF
+  - Composite Importance: 0.422016
+  - Activation Importance: 48.764168
+  - Edge Importance: 5.839275
+  - Used by 47 patients
+  - Total weight: 48.7642
+
+Rank 9: CAVAGGTSYGKLTF
+  - Composite Importance: 0.401466
+  - Activation Importance: 15.046106
+  - Edge Importance: 35.956474
+  - Used by 28 patients
+  - Total weight: 15.0461
+
+Rank 10: CALNAGGTSYGKLTF
+  - Composite Importance: 0.399035
+  - Activation Importance: 14.770127
+  - Edge Importance: 35.956474
+  - Used by 29 patients
+  - Total weight: 14.7701
+
+
+BOTTOM 5 LEAST IMPORTANT CDR3 SEQUENCES:
+--------------------------------------------------------------------------------
+
+Rank 596: CAVGASGTYKYIF
+  - Composite Importance: 0.013576
+  - Used by 17 patients
+
+Rank 597: CAVRGAQKLVF
+  - Composite Importance: 0.011972
+  - Used by 15 patients
+
+Rank 598: CAVRDNTNAGKSTF
+  - Composite Importance: 0.010305
+  - Used by 16 patients
+
+Rank 599: CASSLRGNTEAFF
+  - Composite Importance: 0.007590
+  - Used by 17 patients
+
+Rank 600: CAVRDGQKLLF
+  - Composite Importance: 0.006032
+  - Used by 16 patients
+
+
+KEY FINDINGS:
+--------------------------------------------------------------------------------
+- Mean importance: 0.102735
+- Median importance: 0.075409
+- Std Dev: 0.086993
+- Min: 0.006032
+- Max: 0.651045
+
+FILES GENERATED:
+  1. cdr3_importance_analysis.csv - Full importance ranking table
+  2. cdr3_importance_analysis.png - Visualization plots
+  3. cdr3_feature_analysis_report.txt - This summary report

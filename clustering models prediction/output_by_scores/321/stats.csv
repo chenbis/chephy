@@ -1,0 +1,2 @@
+out_folder,out_name,params_file,right,left,input_file,max_dist,label_header,cdr3_header,execution_time_seconds
+output_by_scores/321,neighbors,stats.csv,4,4,../files/vdjdb_score321.csv,1,antigen.epitope,cdr3,122.24353694915771
