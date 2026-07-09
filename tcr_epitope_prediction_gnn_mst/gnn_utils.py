@@ -55,7 +55,7 @@ def build_hetero_graph(
 
     # --- Step 3: TCR similarity edges via MST/thresholds using only ChePhy distance ---
     if use_mst:
-        print("computing MST")
+        # print("computing MST")
         mst_sparse = minimum_spanning_tree(chephy_matrix)
         coo = mst_sparse.tocoo()
         mst_edges = list(zip(coo.row, coo.col, coo.data))
@@ -63,7 +63,7 @@ def build_hetero_graph(
         selected_edges = mst_edges
 
         if enrich:
-            print("enrichment")
+            # print("enrichment")
             mst_edge_set = set((u, v) for u, v, _ in mst_edges)
             mask = (chephy_matrix <= distance_threshold)
             triu_mask = np.triu(mask, k=1)
@@ -105,8 +105,8 @@ def build_hetero_graph(
     # --- Step 4: Construct HeteroData object ---
     data_hetero = HeteroData()
     data_hetero['tcr'].x = tcr_features
-    data_hetero['epitope'].x = epitope_features
-    # data_hetero['tcr', 'binds', 'epitope'].edge_index = edge_index
+    data_hetero['peptide'].x = epitope_features
+    data_hetero['tcr', 'binds', 'peptide'].edge_index = edge_index
     # data_hetero['epitope', 'rev_binds', 'tcr'].edge_index = rev_edge_index
     data_hetero['tcr', 'similar', 'tcr'].edge_index = tcr_sim_edge_index
     data_hetero = data_hetero.to(device)

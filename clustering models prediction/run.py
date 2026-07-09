@@ -218,12 +218,24 @@ def create_graph(hamming_matrix, chephy_matrix, threshold=3, enrich=True):
         # Step 1: Add initial edges based on Hamming distance
         for i in range(len(chephy_matrix)):
             for j in range(i + 1, len(chephy_matrix)):
-                if hamming_matrix[i, j] <= threshold:
+                if chephy_matrix[i, j] <= threshold:
                     mst_graph.add_edge(i, j, weight=chephy_matrix[i, j])
 
     return mst_graph
 
 
+# def create_graph(hamming_matrix, chephy_matrix, threshold=0.08, enrich=True):
+#     graph = nx.Graph()
+
+#     n = len(chephy_matrix)
+#     graph.add_nodes_from(range(n))
+
+#     for i in range(n):
+#         for j in range(i + 1, n):
+#             if chephy_matrix[i, j] <= threshold:
+#                 graph.add_edge(i, j, weight=chephy_matrix[i, j])
+
+#     return graph
 
 def main():
     start_time = time.time()

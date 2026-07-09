@@ -52,7 +52,10 @@ class MLP(torch.nn.Module):
 
     def forward(self, x_dict, edge_label_index):
         row, col = edge_label_index
-        x = torch.cat([x_dict['tcr'][row], x_dict['epitope'][col]], dim=-1)
+        try:
+            x = torch.cat([x_dict['tcr'][row], x_dict['epitope'][col]], dim=-1)
+        except:
+            x = torch.cat([x_dict['tcr'][row], x_dict['peptide'][col]], dim=-1)
 
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
